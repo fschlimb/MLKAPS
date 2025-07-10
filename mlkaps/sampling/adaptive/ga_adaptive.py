@@ -7,6 +7,7 @@ SPDX-License-Identifier: BSD-3-Clause
 Definition of the GA-Adaptive sampling process, based on genetic algorithms
 """
 
+import pathlib
 import numpy as np
 import pandas as pd
 from pymoo.algorithms.moo.nsga2 import NSGA2
@@ -24,7 +25,6 @@ from pymoo.termination import get_termination
 from tqdm import tqdm
 from typing import Callable
 
-from mlkaps.configuration import ExperimentConfig
 from mlkaps.modeling import OptunaTunerLightgbm, SurrogateFactory
 from mlkaps.optimization.genetic_optimizer import DesignParametersProblem
 from . import HVSampler
@@ -47,14 +47,22 @@ class GAAdaptiveSampler:
 
     def __init__(
         self,
+        *,
+        # Required parameters - no sensible defaults
         execution_function: Callable[[pd.DataFrame], pd.DataFrame],
-        configuration: ExperimentConfig,
         samples_checkpoint: SamplesCheckpoint,
         n_samples: int,
+        output_directory: pathlib.Path,
+        objectives: list,
+        parameters_type: dict,
+        feature_values: dict,
+        input_parameters: list,
+        # Required GA parameters with sensible defaults
         samples_per_iteration: int,
-        bootstrap_ratio: float,
-        initial_ga_ratio: float,
-        final_ga_ratio: float,
+        bootstrap_ratio: float = 0.2,
+        initial_ga_ratio: float = 0.2,
+        final_ga_ratio: float = 0.8,
+        # Optional parameters with defaults
         do_early_stopping: bool = True,
         use_optuna: bool = False,
     ):
@@ -63,26 +71,43 @@ class GAAdaptiveSampler:
 
         :param execution_function: A callback for the execution samples that will evaluates the samples
         :type execution_function: Callable[[pandas.DataFrame], pandas.DataFrame]
-        :param configuration: The experiment configuration object associated with the experiment
-        :type configuration: mlkaps.configuration.ExperimentConfig
         :param n_samples: The total number of samples to take
         :type n_samples: int
-        :param samples_per_iteration: The number of samples to take per iterations of the GA
-            loop
+        :param output_directory: Directory where output files will be saved
+        :type output_directory: pathlib.Path
+        :param objectives: List of objective function names
+        :type objectives: list
+        :param parameters_type: Dictionary mapping parameter names to their types
+        :type parameters_type: dict
+        :param feature_values: Dictionary of feature values for sampling
+        :type feature_values: dict
+        :param input_parameters: List of input parameter names
+        :type input_parameters: list
+        :param samples_per_iteration: The number of samples to take per iterations of the GA loop
         :type samples_per_iteration: int
         :param bootstrap_ratio: The ratio (value between 0-1) of the total number of samples to take
-            in the bootstraping phase
+            in the bootstraping phase (default: 0.2)
         :type bootstrap_ratio: float
-        :param initial_ga_ratio: The ratio (value between 0-1)  of points taken with the GA Algorithm
+        :param initial_ga_ratio: The ratio (value between 0-1) of points taken with the GA Algorithm
             at the first iteration of the algorithm. The ratio at iteration x is the linear interpolation
-            between this value and final_ga_ratio
+            between this value and final_ga_ratio (default: 0.2)
         :type initial_ga_ratio: float
         :param final_ga_ratio: The ratio of points taken with the GA Algorithm
-            at the last iteration of the algorithm. See initial_ga_ratio.
+            at the last iteration of the algorithm. See initial_ga_ratio (default: 0.8)
+        :type final_ga_ratio: float
+        :param do_early_stopping: Whether to enable early stopping in GA (default: True)
+        :type do_early_stopping: bool
+        :param use_optuna: Whether to use Optuna for hyperparameter tuning (default: False)
+        :type use_optuna: bool
         """
-        self.config = configuration
-        self.features = configuration["parameters"]["features_values"]
-        self.input_features = configuration.input_parameters
+
+        # Store configuration parameters directly
+        self.output_directory = output_directory
+        self.objectives = objectives
+        self.parameters_type = parameters_type
+        self.features = feature_values
+        self.input_features = input_parameters
+
         self.execution_function = execution_function
 
         self.samples_checkpoint = samples_checkpoint
@@ -100,10 +125,13 @@ class GAAdaptiveSampler:
 
         # HVS sampler for exploration
         self.hvs_sampler = HVSampler(
-            self.config.parameters_type,
-            self.config["parameters"]["features_values"],
+            variables_types=self.parameters_type,
+            variables_values=self.features,
             error_metric="cov",
         )
+
+        # FIXME: dirty quick-restart
+        self.output_path = self.output_directory / "kernel_sampling/samples.csv"
 
         self.models = {}
         self.iteration = 0
@@ -171,18 +199,57 @@ class GAAdaptiveSampler:
                 print(f"Sampler failed with exception: {exc}")
                 raise SamplerError("GA-Adaptive sampling failed!") from exc
 
+    def _maybe_load_samples(self):
+        """
+        Attempt to load existing samples from output file for quick restart.
+
+        :return: Previously saved samples DataFrame or None if file doesn't exist
+        :rtype: pd.DataFrame | None
+        """
+        if not self.output_path.exists():
+            return None
+
+        logging.info(f"Found samples at '{self.output_path}', quick-restarting")
+        logging.warning(
+            f"GA-Adaptive will quick-restart by default, this is currently not configurable\n"
+            f"Please delete '{self.output_path} to skip quick-restart."
+        )
+        loaded_samples = pd.read_csv(self.output_path)
+        return loaded_samples
+
     def _lhs_bootstrap(self, n_samples, pbar):
+        """
+        Perform initial bootstrapping using Latin Hypercube Sampling.
+
+        :param n_samples: Number of bootstrap samples to generate
+        :type n_samples: int
+        :param pbar: Progress bar instance for tracking progress
+        :type pbar: tqdm
+        :return: DataFrame with bootstrap samples and their evaluations
+        :rtype: pd.DataFrame | None
+        """
         if n_samples <= 0:
             return None
 
         # Bootstrap the sampling with an LHS
         pbar.set_description("GA-Adaptive: bootstrapping with LHS")
-        sampler = LhsSampler(self.config.parameters_type, self.features)
+
+        sampler = LhsSampler(variable_types=self.parameters_type, variable_values=self.features)
         lhs_samples = sampler.sample(n_samples)
 
         return self._sample_kernel(lhs_samples)
 
     def _resampling_loop(self, samples, pbar) -> pd.DataFrame:
+        """
+        Main adaptive sampling loop that iteratively selects points using GA and random sampling.
+
+        :param samples: Initial samples (from bootstrap phase)
+        :type samples: pd.DataFrame
+        :param pbar: Progress bar instance for tracking progress
+        :type pbar: tqdm
+        :return: Complete DataFrame with all samples and evaluations
+        :rtype: pd.DataFrame
+        """
         pbar.set_description("GA-Adaptive-Random")
 
         final_ratio_delta = self.final_ga_ratio - self.initial_ga_ratio
@@ -206,7 +273,7 @@ class GAAdaptiveSampler:
                 delta = max(0, leftover_samples - len(new_points))
             # hvs_samples = self._pick_hvs_samples(delta, samples)
 
-            sampler = RandomSampler(self.config.parameters_type, self.features)
+            sampler = RandomSampler(variable_types=self.parameters_type, variable_values=self.features)
             random_samples = sampler.sample(delta)
             random_samples = pd.concat([samples, self._sample_kernel(random_samples)])
 
@@ -252,7 +319,9 @@ class GAAdaptiveSampler:
         :rtype: pandas.DataFrame
         """
 
-        sampler = RandomSampler(self.config.parameters_type, self.features, self.input_features)
+        sampler = RandomSampler(
+            variable_types=self.parameters_type, variable_values=self.features, variable_mask=self.input_features
+        )
         return sampler.sample(n_points)
 
     def _pick_hvs_samples(self, n_samples: int, data: pd.DataFrame) -> pd.DataFrame:
@@ -295,8 +364,8 @@ class GAAdaptiveSampler:
         # print head of samples and dtype
         # print(samples.head())
         # print(samples.dtypes)
-        # print(self.config.parameters_type.keys())
-        # print(self.config.parameters_type.values())
+        # print(self.parameters_type.keys())
+        # print(self.parameters_type.values())
         # Fit models to the currently sampled points
         try:
             models = self._fit_models(samples)
@@ -304,8 +373,18 @@ class GAAdaptiveSampler:
             logging.error(f"Error fitting models: {e}")
             raise SamplerError("Failed to fit models due to a value error") from e
 
+        # Create a minimal config-like object for DesignParametersProblem
+        # This is a temporary solution until DesignParametersProblem is also refactored
+        class ConfigProxy:
+            def __init__(self, parameters_type, feature_values, objectives):
+                self.parameters_type = parameters_type
+                self.feature_values = feature_values
+                self.objectives = objectives
+
+        config_proxy = ConfigProxy(self.parameters_type, self.features, self.objectives)
+
         # Create the GA object
-        problem = DesignParametersProblem(self.config, models)
+        problem = DesignParametersProblem(config_proxy, models)
         algorithm = NSGA2(
             sampling=MixedVariableSampling(),
             mating=MixedVariableMating(eliminate_duplicates=MixedVariableDuplicateElimination()),
@@ -352,8 +431,7 @@ class GAAdaptiveSampler:
 
         begin = time.time()
 
-        exp_config = self.config
-        sampler = RandomSampler(exp_config.parameters_type, exp_config.feature_values)
+        sampler = RandomSampler(variable_types=self.parameters_type, variable_values=self.features)
 
         samples = sampler.sample(1000000)
 
@@ -403,13 +481,32 @@ class GAAdaptiveSampler:
         return local_optimum, point
 
     def _build_model(self, obj, samples):
+        """
+        Build a surrogate model for the given objective using the current samples.
+
+        :param obj: Name of the objective to build a model for
+        :type obj: str
+        :param samples: Current samples used for training the model
+        :type samples: pd.DataFrame
+        :return: Trained surrogate model
+        :rtype: Any
+        """
 
         if self.use_optuna:
-            tuner = OptunaTunerLightgbm(samples.drop(self.config.objectives, axis=1), samples[obj])
+            tuner = OptunaTunerLightgbm(samples.drop(self.objectives, axis=1), samples[obj])
             model, _ = tuner.run(time_budget=2 * 60, n_trials=128)
         else:
             print("Building oracle model for ga-adaptive step")
-            factory = SurrogateFactory(self.config, samples)
+
+            # Create a minimal config-like object for SurrogateFactory
+            # This is a temporary solution until SurrogateFactory is also refactored
+            class ConfigProxy:
+                def __init__(self, parameters_type, objectives):
+                    self.parameters_type = parameters_type
+                    self.objectives = objectives
+
+            config_proxy = ConfigProxy(self.parameters_type, self.objectives)
+            factory = SurrogateFactory(config_proxy, samples)
             model = factory.build(obj)
         return model
 
@@ -424,17 +521,17 @@ class GAAdaptiveSampler:
         :rtype: dict
         """
 
-        for obj in self.config.objectives:
+        for obj in self.objectives:
             first_iter = obj not in self.models
 
             if first_iter or (self.iteration % 4) == 0:
                 self.models[obj] = self._build_model(obj, samples)
             else:
                 new_X, new_y = (
-                    samples.drop(self.config.objectives, axis=1),
+                    samples.drop(self.objectives, axis=1),
                     samples[obj],
                 )
-                new_X = encode_dataframe(self.config.parameters_type, new_X)
+                new_X = encode_dataframe(self.parameters_type, new_X)
                 self.models[obj].fit(new_X, new_y)
 
         return self.models

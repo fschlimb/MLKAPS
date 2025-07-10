@@ -50,36 +50,40 @@ class GenericBoundedSampler(StaticSampler):
 
     def __init__(
         self,
+        *,
         generic_sampler_type,
-        variable_types=None,
-        variable_values=None,
-        variable_mask=None,
+        variable_types: dict | None = None,
+        variable_values: dict | None = None,
+        variable_mask: list | None = None,
     ):
         """
         Build a new generic sampler using the generic_sampler_type sampling method
 
-
-        :param generic_sampler_type: A sampling object that uses smt API;
+        :param generic_sampler_type:
+            A sampling object that uses smt API;
             - Must have a constructor with a xlimits argument, defining a list of list,
             corresponding to the bounds of each variable
             - Must have a __call__ method, returning 2d list of samples
-        :param variable_types: A dictionary associating the name of each variable to its type. The type can be either
-            "categorical", "bool", "int" or "float".
-            Can be None, in which case the bounds are not generated, and must be set later using
-            set_variables(...)
-        :type variables_types: dict
-        :param variable_values: A dictionary associating the name of each variable to its possible values. The possible
+        :type generic_sampler_type: type
+        :param variable_types:
+            A dictionary associating the name of each variable to its type. The type can be either
+            "Categorical", "Boolean", "int" or "float".
+            If None, the bounds are not generated, and must be set later using set_variables(...)
+            Defaults to None
+        :type variable_types: dict | None, optional
+        :param variable_values:
+            A dictionary associating the name of each variable to its possible values. The possible
             values must be a list of values for categorical variables, or a tuple (min, max) for
             numerical variables.
-            Can be None, in which case the bounds are not generated, and must be set later using
-            set_variables(...)
-        :type variable_values: dict
+            If None, the bounds are not generated, and must be set later using set_variables(...)
+            Defaults to None
+        :type variable_values: dict | None, optional
         :param variable_mask:
             A list of names of variables to sample. If None, all variables are sampled. Else,
             only the variables in the list are sampled.
             Can be useful when the variables to samples are a subset of the variables in
-            variable_types
-        :type variable_mask: list
+            variable_types. Defaults to None
+        :type variable_mask: list | None, optional
         """
 
         self.sampler_type = generic_sampler_type
@@ -177,8 +181,34 @@ class LhsSampler(GenericBoundedSampler):
     Sampler based on Latin Hypercube Sampling.
     """
 
-    def __init__(self, variable_types=None, variable_values=None, variable_mask=None):
-        super().__init__(LHS, variable_types, variable_values, variable_mask)
+    def __init__(
+        self, *, variable_types: dict | None = None, variable_values: dict | None = None, variable_mask: list | None = None
+    ):
+        """
+        Create a new LHS (Latin Hypercube Sampling) sampler.
+
+        :param variable_types:
+            A dictionary associating the name of each variable to its type. The type can be either
+            "Categorical", "Boolean", "int" or "float".
+            If None, the variables must be set later using set_variables(...). Defaults to None
+        :type variable_types: dict | None, optional
+        :param variable_values:
+            A dictionary associating the name of each variable to its possible values. The possible
+            values must be a list of values for categorical variables, or a tuple (min, max) for
+            numerical variables.
+            If None, the variables must be set later using set_variables(...). Defaults to None
+        :type variable_values: dict | None, optional
+        :param variable_mask:
+            A list of names of variables to sample. If None, all variables are sampled. Else,
+            only the variables in the list are sampled. Defaults to None
+        :type variable_mask: list | None, optional
+        """
+        super().__init__(
+            generic_sampler_type=LHS,
+            variable_types=variable_types,
+            variable_values=variable_values,
+            variable_mask=variable_mask,
+        )
 
 
 class RandomSampler(GenericBoundedSampler):
@@ -186,5 +216,31 @@ class RandomSampler(GenericBoundedSampler):
     Sampler based on random uniform sampling
     """
 
-    def __init__(self, variable_types=None, variable_values=None, variable_mask=None):
-        super().__init__(Random, variable_types, variable_values, variable_mask)
+    def __init__(
+        self, *, variable_types: dict | None = None, variable_values: dict | None = None, variable_mask: list | None = None
+    ):
+        """
+        Create a new Random uniform sampler.
+
+        :param variable_types:
+            A dictionary associating the name of each variable to its type. The type can be either
+            "Categorical", "Boolean", "int" or "float".
+            If None, the variables must be set later using set_variables(...). Defaults to None
+        :type variable_types: dict | None, optional
+        :param variable_values:
+            A dictionary associating the name of each variable to its possible values. The possible
+            values must be a list of values for categorical variables, or a tuple (min, max) for
+            numerical variables.
+            If None, the variables must be set later using set_variables(...). Defaults to None
+        :type variable_values: dict | None, optional
+        :param variable_mask:
+            A list of names of variables to sample. If None, all variables are sampled. Else,
+            only the variables in the list are sampled. Defaults to None
+        :type variable_mask: list | None, optional
+        """
+        super().__init__(
+            generic_sampler_type=Random,
+            variable_types=variable_types,
+            variable_values=variable_values,
+            variable_mask=variable_mask,
+        )

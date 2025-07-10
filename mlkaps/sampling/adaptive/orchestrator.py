@@ -116,12 +116,12 @@ class TimeStoppingCriterion(StoppingCriterion):
     True
     """
 
-    def __init__(self, max_time_in_seconds: float):
+    def __init__(self, *, max_time_in_seconds: float):
         """
+        Initialize the time-based stopping criterion.
 
-        Parameters
-        ----------
-        max_time_in_seconds The maximum amount of time in seconds that the sampling process can take
+        :param max_time_in_seconds: The maximum amount of time in seconds that the sampling process can take
+        :type max_time_in_seconds: float
         """
 
         self.max_time = max_time_in_seconds
@@ -207,12 +207,12 @@ class MaxNSampleStoppingCriterion(StoppingCriterion):
     False
     """
 
-    def __init__(self, n_samples: int):
+    def __init__(self, *, n_samples: int):
         """
+        Initialize the maximum samples stopping criterion.
 
-        Parameters
-        ----------
-        n_samples The maximum number of samples allowed in the dataset
+        :param n_samples: The maximum number of samples allowed in the dataset
+        :type n_samples: int
         """
         self.max_n_samples = n_samples
 
@@ -299,17 +299,16 @@ class ErrorConvergenceStoppingCriterion(StoppingCriterion):
     True
     """
 
-    def __init__(self, threshold: float, window_size: int = 5):
+    def __init__(self, *, threshold: float, window_size: int = 5):
         """
+        Initialize the error convergence stopping criterion.
 
-        parameters
-        ----------
-        threshold
-            The threshold for the variance of the error.
+        :param threshold: The threshold for the variance of the error.
             The criterion is reached when the maximum variance of the errors is below this threshold
-        window_size
-            The size of the window used to compute the variance
-            While the number of iteration is below this value, the criterion is not reached
+        :type threshold: float
+        :param window_size: The size of the window used to compute the variance.
+            While the number of iteration is below this value, the criterion is not reached (default: 5)
+        :type window_size: int
         """
 
         if window_size < 2:
@@ -397,13 +396,16 @@ class ErrorConvergenceStoppingCriterion(StoppingCriterion):
 
 class StoppingCriterionFactory:
     """
-    Helper factory for creating stopping criterion from a dictionary, or a set of dictionaries
+    Helper factory for creating stopping criterion from configuration dictionaries.
+
+    This factory provides a convenient way to create stopping criteria instances from
+    configuration data while ensuring all constructors use keyword-only arguments internally.
     """
 
     @staticmethod
     def create_all_from_dict(config: dict) -> list[StoppingCriterion]:
         """
-        Create a list of stopping criterion from a dictionary containing multiple criterion
+        Create a list of stopping criterion from a dictionary containing multiple criterion.
 
         The dictionary must have the following format:
 
@@ -416,36 +418,25 @@ class StoppingCriterionFactory:
             }
         }
 
-        Parameters
-        ----------
-        config
-            The global configuration dictionary
-
-        Returns
-        -------
-        Res
-            A list of stopping criterion
-
+        :param config: The global configuration dictionary
+        :type config: dict
+        :return: A list of stopping criterion
+        :rtype: list[StoppingCriterion]
         """
         return [StoppingCriterionFactory.create_from_dict(criterion_type, config[criterion_type]) for criterion_type in config]
 
     @staticmethod
     def create_from_dict(criterion_type: str, config: dict) -> StoppingCriterion:
         """
-        Create a stopping criterion from a configuration dictionary
+        Create a stopping criterion from a configuration dictionary.
 
-        Parameters
-        ----------
-        criterion_type
-            The type of criterion to create
-
-        config
-            The dictionary containing the configuration parameters for the criterion
-
-        Returns
-        -------
-        Res
-            The created criterion if the type is recognized, otherwise a ValueError is raised
+        :param criterion_type: The type of criterion to create
+        :type criterion_type: str
+        :param config: The dictionary containing the configuration parameters for the criterion
+        :type config: dict
+        :return: The created criterion if the type is recognized
+        :rtype: StoppingCriterion
+        :raises ValueError: If the criterion type is unknown
         """
         if criterion_type == "time":
             return TimeStoppingCriterion(**config)
@@ -516,12 +507,12 @@ class AdaptiveSamplingOrchestrator:
     convergence evaluation.
 
     >>> from mlkaps.sampling.adaptive import AdaptiveSamplingOrchestrator, HVSampler
-    >>> from mlkaps.sampling import ValueSequence
-    >>> features = {"a": ValueSequence(0, 5, 1, type=int), "b": ValueSequence(0, 5, 1, type=int)}
-    >>> sampler = HVSampler({"a": "int", "b": "int"}, features)
+    >>> features = {"a": [0, 5], "b": [0, 5]}
+    >>> sampler = HVSampler(variables_types={"a": "int", "b": "int"}, variables_values=features)
     >>> f = lambda df: pd.concat([df, df["a"] + df["b"]], axis=1)
-    >>> stopping_criteria = [MaxNSampleStoppingCriterion(200)]
-    >>> orchestrator = AdaptiveSamplingOrchestrator(features, f, sampler, None, None, stopping_criteria)
+    >>> stopping_criteria = [MaxNSampleStoppingCriterion(n_samples=200)]
+    >>> orchestrator = AdaptiveSamplingOrchestrator(features=features, execution_function=f, adaptive_sampler=sampler,
+    >>>                                             output_directory=None, stopping_criteria=stopping_criteria)
     >>> # Output a dataframe containing all the samples
     >>> orchestrator.run() # doctest: +ELLIPSIS
         a  b  0
@@ -532,52 +523,42 @@ class AdaptiveSamplingOrchestrator:
 
     def __init__(
         self,
+        *,
         features: dict,
         execution_function: Callable,
         adaptive_sampler: AdaptiveSampler,
-        output_directory: Path | str | None,
-        samples_checkpoint: SamplesCheckpoint | None,
+        output_directory: Path | str | None = None,
+        samples_checkpoint: SamplesCheckpoint | None = None,
         stopping_criteria: list[StoppingCriterion] = None,
         error_evaluator: Callable[[pd.DataFrame, list, list], pd.DataFrame] = default_error_evaluator,
         n_samples_per_iteration: int = 100,
     ):
         """
-        Create a new adaptive sampling orchestrator
+        Create a new adaptive sampling orchestrator.
 
-        Parameters
-        ----------
-        features
-            A dictionary containing the features to use for the adaptive sampling. The keys
-            are the feature names, and the values are arrays of the features values
-
-        execution_function
-            A function that takes a dataframe as input, and returns a dataframe containing
+        :param features: A dictionary containing the features to use for the adaptive sampling.
+            The keys are the feature names, and the values are arrays of the features values
+        :type features: dict
+        :param execution_function: A function that takes a dataframe as input, and returns a dataframe containing
             the original data, and extra columns containing the objectives values
-
-        adaptive_sampler
-            The adaptive sampler to use for the sampling process
-
-        output_directory
-            The directory where the adaptive sampling data will be saved
-            If not set or None, the data will not be saved
-
-        output_path
-             The file where the samples are written as they are run.  If this file exists at the
-             start of ML-KAPS, the samples in the file are used as a restart.
-
-        stopping_criteria
-            A list of stopping criterion to use for stopping the adaptive sampling process
+        :type execution_function: Callable
+        :param adaptive_sampler: The adaptive sampler to use for the sampling process
+        :type adaptive_sampler: AdaptiveSampler
+        :param output_directory: The directory where the adaptive sampling data will be saved.
+            If not set or None, the data will not be saved (default: None)
+        :type output_directory: Path | str | None
+        :param samples_checkpoint: Checkpoint handler for saving/loading samples (default: None)
+        :type samples_checkpoint: SamplesCheckpoint | None
+        :param stopping_criteria: A list of stopping criterion to use for stopping the adaptive sampling process.
             If not set, a list of default criterion will be used:
-                - ErrorConvergenceStoppingCriterion(0.002)
-                    Stop when the variance on the error is below 0.002
-                - TimeStoppingCriterion(600)
-                    Stops after 600 seconds
-        error_evaluator
-            The function used to evaluate the modeling error based on the current samples
-            If not set, a default evaluator will be used based on XGBoost and MSE
-
-        n_samples_per_iteration
-            The number of samples to generate per iteration
+            - ErrorConvergenceStoppingCriterion(0.002): Stop when the variance on the error is below 0.002
+            - TimeStoppingCriterion(600): Stops after 600 seconds (default: None)
+        :type stopping_criteria: list[StoppingCriterion] | None
+        :param error_evaluator: The function used to evaluate the modeling error based on the current samples.
+            If not set, a default evaluator will be used based on LightGBM and MSE (default: default_error_evaluator)
+        :type error_evaluator: Callable[[pd.DataFrame, list, list], pd.DataFrame]
+        :param n_samples_per_iteration: The number of samples to generate per iteration (default: 100)
+        :type n_samples_per_iteration: int
         """
 
         self.features = features
@@ -595,8 +576,8 @@ class AdaptiveSamplingOrchestrator:
         self.criteria = stopping_criteria
         if self.criteria is None or len(self.criteria) == 0:
             self.criteria = [
-                ErrorConvergenceStoppingCriterion(0.002),
-                TimeStoppingCriterion(600),
+                ErrorConvergenceStoppingCriterion(threshold=0.002),
+                TimeStoppingCriterion(max_time_in_seconds=600),
             ]
 
         self.error_evaluator = error_evaluator

@@ -479,7 +479,7 @@ class _MonoObjectiveOptimizationMethod(_GeneticOptimizationMethod):
         begin = time.time()
 
         exp_config = genetic_config.experiment_configuration
-        sampler = RandomSampler(exp_config.parameters_type, exp_config.feature_values)
+        sampler = RandomSampler(variable_types=exp_config.parameters_type, variable_values=exp_config.feature_values)
 
         samples = sampler.sample(10000)
 

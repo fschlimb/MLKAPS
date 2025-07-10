@@ -27,11 +27,37 @@ class MultilevelHVS(AdaptiveSampler):
 
     def __init__(
         self,
+        *,
         features_levels: list[list] = None,
-        variables_types=None,
-        variables_values=None,
+        variables_types: dict | None = None,
+        variables_values: dict | None = None,
     ):
-        self.hvs = HVSampler(variables_types, variables_values, "cov")
+        """
+        Create a new MultilevelHVS sampler.
+
+        :param features_levels:
+            A list of lists defining the hierarchical feature levels for multilevel partitioning.
+            Each inner list contains feature names for that partitioning level.
+            If None, must be set later using set_per_level_features method.
+            Defaults to None
+        :type features_levels: list[list] | None, optional
+        :param variables_types:
+            A dictionary containing the types of the variables to sample.
+            The keys must be the name of the variables, and the values must be one of
+            ["int", "float", "categorical", "Boolean"].
+            If None, the variables must be set later using the set_variables method.
+            Defaults to None
+        :type variables_types: dict | None, optional
+        :param variables_values:
+            A dictionary containing the values of the variables to sample.
+            The keys must be the name of the variables, and the values must be a tuple
+            (min, max) containing the bounds of the variable for numerical variables, or a list
+            containing the possible values for categorical variables.
+            If None, the variables must be set later using the set_variables method.
+            Defaults to None
+        :type variables_values: dict | None, optional
+        """
+        self.hvs = HVSampler(variables_types=variables_types, variables_values=variables_values, error_metric="cov")
 
         super().__init__(variables_types, variables_values)
         self.features_levels = features_levels

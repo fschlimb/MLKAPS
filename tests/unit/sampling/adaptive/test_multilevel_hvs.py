@@ -13,7 +13,7 @@ from mlkaps.sampling import ValueSequence
 
 
 def _run_simple_multilevel_hvs(features_types, features_values, levels):
-    sampler = MultilevelHVS(levels, features_types, features_values)
+    sampler = MultilevelHVS(features_levels=levels, variables_types=features_types, variables_values=features_values)
 
     def f(df):
         return pd.concat([df, df.apply(lambda x: x.iloc[0], axis=1)], axis=1)
@@ -76,7 +76,7 @@ class TestMultilevelHVS:
                 else:
                     return 10
 
-        sampler = MultilevelHVS(levels, features_types, features_values)
+        sampler = MultilevelHVS(features_levels=levels, variables_types=features_types, variables_values=features_values)
 
         def f(df):
             return pd.concat([df, df.apply(eval_features, axis=1)], axis=1)

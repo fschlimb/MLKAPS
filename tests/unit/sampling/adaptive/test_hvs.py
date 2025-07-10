@@ -20,7 +20,7 @@ class TestHVSampler:
         def f(df):
             return pd.concat([df, df.apply(lambda x: x.iloc[0], axis=1)], axis=1)
 
-        sampler = HVSampler({"a": "float"}, features)
+        sampler = HVSampler(variables_types={"a": "float"}, variables_values=features)
         data = sampler.sample(100, None, f)
         data = sampler.sample(200, data, f)
         assert data.shape == (300, 2)
@@ -57,7 +57,7 @@ class TestHVSampler:
         def f(df):
             return pd.concat([df, df.apply(lambda x: x.iloc[0] + x.iloc[1], axis=1)], axis=1)
 
-        sampler = HVSampler({"a": "float", "b": "float"}, features)
+        sampler = HVSampler(variables_types={"a": "float", "b": "float"}, variables_values=features)
         data = sampler.sample(100, None, f)
         data = sampler.sample(200, data, f)
         assert data.shape == (300, 3)
@@ -72,7 +72,7 @@ class TestHVSampler:
         def f(df):
             return pd.concat([df, df.apply(lambda x: x.iloc[0], axis=1)], axis=1)
 
-        sampler = HVSampler({"a": "float"}, features)
+        sampler = HVSampler(variables_types={"a": "float"}, variables_values=features)
         # Request a single sample, but use bootstrap
         data = sampler.sample(1, None, f)
         assert data.shape == (1, 2)
@@ -84,7 +84,7 @@ class TestHVSampler:
         def f(df):
             return pd.concat([df, df.apply(lambda x: x.iloc[0], axis=1)], axis=1)
 
-        sampler = HVSampler({"a": "float"}, features)
+        sampler = HVSampler(variables_types={"a": "float"}, variables_values=features)
         # Request a single sample, but use bootstrap
         data = None
         old_data = None
@@ -104,7 +104,7 @@ class TestHVSampler:
         def f(df):
             return pd.concat([df, df.apply(lambda x: 0 if x.iloc[0] < 50 else x.iloc[0], axis=1)], axis=1)
 
-        sampler = HVSampler({"a": "float"}, features)
+        sampler = HVSampler(variables_types={"a": "float"}, variables_values=features)
         # Request a single sample, but use bootstrap
         data = None
         for _ in range(100):

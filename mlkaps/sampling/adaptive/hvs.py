@@ -113,6 +113,7 @@ class HVSPartition:
 
     def __init__(
         self,
+        *,
         bounds: dict,
         samples: pd.DataFrame,
         node_id: int,
@@ -208,6 +209,7 @@ class HVSPartitionner:
 
     def __init__(
         self,
+        *,
         features: dict,
         objective: str,
         tree_params: dict,
@@ -386,12 +388,12 @@ class HVSPartitionner:
             bounds = p[1]
 
             new_partition = HVSPartition(
-                bounds,
-                nodes_samples[node_id],
-                node_id,
-                self.error_metric,
-                self.objective,
-                self.size_metric,
+                bounds=bounds,
+                samples=nodes_samples[node_id],
+                node_id=node_id,
+                error_function=self.error_metric,
+                objective=self.objective,
+                size_metric=self.size_metric,
             )
             res.append(new_partition)
 
@@ -470,8 +472,8 @@ class HVSampler(AdaptiveSampler):
     >>> features = {"x": ValueSequence(0, 6, 1, type=int)}
     >>> # Define the function to sample. which MUST return a dataframe containing the original
     >>> # dataframe, and the sampled values as new columns
-    >>> f = lambda df: pd.concat([df, df.apply(lambda x: x.iloc[0], axis=1)], axis=1)
-    >>> sampler = HVSampler({"x": "int"}, features)
+    >>> f = lambda df: pd.concat([df, df.apply(lambda x: x[0], axis=1)], axis=1)
+    >>> sampler = HVSampler(variables_types={"x": "int"}, variables_values=features)
     >>> samples = sampler.sample(10, None, f)
     >>> # In this case, x = y for all samples
     >>> all(samples.iloc[:, 0] == samples.iloc[:, 1])
@@ -493,6 +495,7 @@ class HVSampler(AdaptiveSampler):
 
     def __init__(
         self,
+        *,
         variables_types: dict | None = None,
         variables_values: dict | None = None,
         error_metric: str = "variance",
@@ -617,7 +620,7 @@ class HVSampler(AdaptiveSampler):
 
         # Use LHS to generate a starting dataset
         # Extract the features ranges as ndarray
-        samples = LhsSampler(self.variables_types, self.variables_values)(n_samples)
+        samples = LhsSampler(variable_types=self.variables_types, variable_values=self.variables_values)(n_samples)
         labels = execution_func(samples)
 
         return labels
@@ -756,12 +759,12 @@ class HVSampler(AdaptiveSampler):
 
         # Extract the input from the data, and ensure the ordering is alpha-numerical
         partitionner = HVSPartitionner(
-            split_on,
-            objective,
+            features=split_on,
+            objective=objective,
             # FIXME: Currently, the only parameter is the min number of samples in the leaf
             # We should improve this down the line
-            {"min_samples_leaf": min_samples_per_leaf},
-            self.error_metric,
+            tree_params={"min_samples_leaf": min_samples_per_leaf},
+            error_metric=self.error_metric,
         )
         partitions = partitionner.partition(samples)
         self.final_partitions = partitions

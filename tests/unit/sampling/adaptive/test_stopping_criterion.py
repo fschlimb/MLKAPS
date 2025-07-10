@@ -16,14 +16,14 @@ from mlkaps.sampling.adaptive import ErrorConvergenceStoppingCriterion, MaxNSamp
 class TestTimeCriterion:
 
     def test_correctly_reaches(self):
-        criterion = TimeStoppingCriterion(0.1)
+        criterion = TimeStoppingCriterion(max_time_in_seconds=0.1)
 
         criterion.init()
         time.sleep(0.2)
         assert criterion.is_reached(pd.DataFrame(), pd.DataFrame())
 
     def test_not_reached(self):
-        criterion = TimeStoppingCriterion(0.5)
+        criterion = TimeStoppingCriterion(max_time_in_seconds=0.5)
         criterion.init()
 
         assert not criterion.is_reached(pd.DataFrame(), pd.DataFrame())
@@ -31,7 +31,7 @@ class TestTimeCriterion:
         assert not criterion.is_reached(pd.DataFrame(), pd.DataFrame())
 
     def test_limits_number_of_samples(self):
-        criterion = TimeStoppingCriterion(0.5)
+        criterion = TimeStoppingCriterion(max_time_in_seconds=0.5)
         criterion.init()
 
         assert criterion.max_samples(None) == -1
@@ -56,7 +56,7 @@ class TestTimeCriterion:
 
 class TestNMaxSampleCriterion:
     def test_empty_data(self):
-        criterion = MaxNSampleStoppingCriterion(10)
+        criterion = MaxNSampleStoppingCriterion(n_samples=10)
         criterion.init()
 
         assert not criterion.is_reached(None, None)
@@ -65,7 +65,7 @@ class TestNMaxSampleCriterion:
         assert criterion.max_samples(pd.DataFrame()) == 10
 
     def test_enough_samples(self):
-        criterion = MaxNSampleStoppingCriterion(10)
+        criterion = MaxNSampleStoppingCriterion(n_samples=10)
         criterion.init()
 
         fake_data = pd.DataFrame()
@@ -75,7 +75,7 @@ class TestNMaxSampleCriterion:
         assert criterion.max_samples(fake_data) == 0
 
     def test_not_enough_samples(self):
-        criterion = MaxNSampleStoppingCriterion(10)
+        criterion = MaxNSampleStoppingCriterion(n_samples=10)
         criterion.init()
 
         fake_data = pd.DataFrame()
@@ -88,7 +88,7 @@ class TestNMaxSampleCriterion:
 class TestConvergenceCriterion:
     def test_empty_data(self):
         # Stop when the variance of the error is below 0.5
-        criterion = ErrorConvergenceStoppingCriterion(0.5)
+        criterion = ErrorConvergenceStoppingCriterion(threshold=0.5)
         criterion.init()
 
         assert not criterion.is_reached(pd.DataFrame(), pd.DataFrame())
@@ -96,7 +96,7 @@ class TestConvergenceCriterion:
 
     def test_never_limit_samples(self):
         # Stop when the variance of the error is below 0.5
-        criterion = ErrorConvergenceStoppingCriterion(0.5, window_size=2)
+        criterion = ErrorConvergenceStoppingCriterion(threshold=0.5, window_size=2)
         criterion.init()
 
         assert criterion.max_samples(None) == -1
@@ -111,7 +111,7 @@ class TestConvergenceCriterion:
         fake_data["test"] = [0, 0]
         assert criterion.max_samples(fake_data) == -1
 
-        criterion = ErrorConvergenceStoppingCriterion(0.5, window_size=5)
+        criterion = ErrorConvergenceStoppingCriterion(threshold=0.5, window_size=5)
         criterion.init()
 
         # Not enough data
@@ -121,7 +121,7 @@ class TestConvergenceCriterion:
 
     def test_convergence(self):
         # Stop when the variance of the error is below 0.5
-        criterion = ErrorConvergenceStoppingCriterion(0.5, window_size=10)
+        criterion = ErrorConvergenceStoppingCriterion(threshold=0.5, window_size=10)
         criterion.init()
 
         # Check that the convergence is reached when the variance over 10 iterations is below 0.5 (0 here)
@@ -134,7 +134,7 @@ class TestConvergenceCriterion:
 
     def test_no_convergence(self):
         # Stop when the variance of the error is below 0.5
-        criterion = ErrorConvergenceStoppingCriterion(0.5, window_size=10)
+        criterion = ErrorConvergenceStoppingCriterion(threshold=0.5, window_size=10)
         criterion.init()
 
         # Check that the convergence is NOT reached when the variance over 10 iterations is over 0.5
@@ -148,12 +148,12 @@ class TestConvergenceCriterion:
     def test_convergence_invalid_window_size(self):
         # Check that the window size is at least 2
         with pytest.raises(ValueError):
-            ErrorConvergenceStoppingCriterion(0.5, window_size=1)
+            ErrorConvergenceStoppingCriterion(threshold=0.5, window_size=1)
 
     def test_no_convergence_window_size(self):
         # Check that convergence is not reached when the window size is too small
         # Even if the variance is below the threshold
-        criterion = ErrorConvergenceStoppingCriterion(0.5, window_size=10)
+        criterion = ErrorConvergenceStoppingCriterion(threshold=0.5, window_size=10)
         criterion.init()
 
         # Check that the convergence is reached when the variance over 10 iterations is below 0.5 (0 here)
