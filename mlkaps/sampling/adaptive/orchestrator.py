@@ -507,7 +507,8 @@ class AdaptiveSamplingOrchestrator:
     convergence evaluation.
 
     >>> from mlkaps.sampling.adaptive import AdaptiveSamplingOrchestrator, HVSampler
-    >>> features = {"a": [0, 5], "b": [0, 5]}
+    >>> from mlkaps.sampling import ValueSequence
+    >>> features = {"a": ValueSequence(0, 5, 1, type=int), "b": ValueSequence(0, 5, 1, type=int)}
     >>> sampler = HVSampler(variables_types={"a": "int", "b": "int"}, variables_values=features)
     >>> f = lambda df: pd.concat([df, df["a"] + df["b"]], axis=1)
     >>> stopping_criteria = [MaxNSampleStoppingCriterion(n_samples=200)]

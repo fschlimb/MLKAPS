@@ -472,7 +472,7 @@ class HVSampler(AdaptiveSampler):
     >>> features = {"x": ValueSequence(0, 6, 1, type=int)}
     >>> # Define the function to sample. which MUST return a dataframe containing the original
     >>> # dataframe, and the sampled values as new columns
-    >>> f = lambda df: pd.concat([df, df.apply(lambda x: x[0], axis=1)], axis=1)
+    >>> f = lambda df: pd.concat([df, df.apply(lambda x: x.iloc[0], axis=1)], axis=1)
     >>> sampler = HVSampler(variables_types={"x": "int"}, variables_values=features)
     >>> samples = sampler.sample(10, None, f)
     >>> # In this case, x = y for all samples

@@ -10,7 +10,6 @@ import pandas as pd
 import logging
 import pprint
 import textwrap
-from tqdm import tqdm
 
 from mlkaps.configuration import ExperimentConfig
 from mlkaps.sampling.sampler_factory import SamplerFactory
@@ -190,26 +189,8 @@ class _StaticSamplerInterfaceWrapper:
         if n_samples <= 0:
             return samples_reloaded
 
-        output_path = self.output_directory / "kernel_sampling/samples.csv"
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        samples = sampler.sample(n_samples)
-
-        kBatchSize = 100
-        batches = min(kBatchSize, len(samples))
-        res = []
-        # Run the samples in batches in order to periodically save the results to file
-        with tqdm(total=len(samples), desc="Running samples", leave=None) as pbar:
-            self.kernel_sampler.progress_bar = pbar
-            for i in range(0, len(samples), batches):
-                batch = samples.iloc[i : i + batches]
-                results = self.kernel_sampler(batch)
-                res.append(results)
-
-                tmp = pd.concat(res, axis=0).reset_index(drop=True)
-                tmp.to_csv(output_path, index=False)
-
-        new_samples = tmp
+        new_samples = sampler.sample(n_samples)
+        new_samples = self.kernel_sampler(new_samples)
 
         # Combine with reloaded samples if any
         if samples_reloaded is not None:
@@ -314,12 +295,7 @@ class _GAAdaptiveInterfaceWrapper:
         :rtype: pd.DataFrame
         """
         sampler = self._build_sampler()
-        res = sampler()
-
-        output_path = self.output_directory / "kernel_sampling/samples.csv"
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        res.to_csv(output_path, index=False)
-        return res
+        return sampler()
 
     def _build_sampler(self):
         """
@@ -453,10 +429,7 @@ class _AdaptiveSamplerInterfaceWrapper:
         """
         orchestrator = self._build_sampler()
         samples = orchestrator.run()
-
-        output_path = self.output_directory / "kernel_sampling/samples.csv"
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        samples.to_csv(output_path, index=False)
+        samples.reset_index(drop=True, inplace=True)
         return samples
 
     def _build_sampler(self):
@@ -778,26 +751,10 @@ class SamplingSystemFactory:
         :rtype: _StaticSamplerInterfaceWrapper | _GAAdaptiveInterfaceWrapper | _AdaptiveSamplerInterfaceWrapper
         :raises ValueError: If sampler type is unknown
         """
-        mapping = {
-            "ga_adaptive": _GAAdaptiveInterfaceWrapper,
-            ("hvs", "multilevel_hvs"): _AdaptiveSamplerInterfaceWrapper,
-            ("lhs", "random"): _StaticSamplerInterfaceWrapper,
-        }
-
-        wrapper = None
-        for key in mapping:
-            if isinstance(key, tuple) and self.sampler in key:
-                wrapper = mapping[key]
-            elif key == self.sampler:
-                wrapper = mapping[key]
-
-        if wrapper is None:
-            raise ValueError(f"Unknown sampler type '{self.sampler}'")
-
         # Create wrapper with appropriate parameters based on sampler type
         if self.sampler == "ga_adaptive":
             # Extract required GA parameters from sampler_parameters
-            return wrapper(
+            return _GAAdaptiveInterfaceWrapper(
                 kernel_sampler=kernel_sampler,
                 output_directory=self.output_directory,
                 objectives=self.objectives,
@@ -807,9 +764,9 @@ class SamplingSystemFactory:
                 samples_checkpoint=self.samples_checkpoint,
                 **self.sampler_parameters,
             )
-        elif self.sampler in ("hvs", "multilevel_hvs"):
+        elif self.sampler == ("hvs", "multilevel_hvs"):
             # Adaptive sampler parameters
-            return wrapper(
+            return _AdaptiveSamplerInterfaceWrapper(
                 kernel_sampler=kernel_sampler,
                 parameters_type=self.parameters_type,
                 feature_values=self.feature_values,
@@ -820,9 +777,9 @@ class SamplingSystemFactory:
                 samples_checkpoint=self.samples_checkpoint,
                 **self.sampler_parameters,
             )
-        else:
+        elif self.sampler == ("lhs", "random"):
             # Static sampler parameters
-            return wrapper(
+            return _StaticSamplerInterfaceWrapper(
                 kernel_sampler=kernel_sampler,
                 parameters_type=self.parameters_type,
                 feature_values=self.feature_values,
@@ -831,6 +788,8 @@ class SamplingSystemFactory:
                 samples_checkpoint=self.samples_checkpoint,
                 **self.sampler_parameters,
             )
+        else:
+            raise ValueError(f"Unknown sampler type '{self.sampler}'")
 
 
 def _build_kernel_sampler(config: ExperimentConfig, config_dict: dict, samples_checkpoint: SamplesCheckpoint):
