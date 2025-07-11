@@ -499,70 +499,36 @@ class Sampler:
     Base class for all samplers.
     """
 
-    def __init__(self, variables_types=None, variables_values=None, variables_mask=None):
+    def __init__(self, variables=None):
         """
         Initializes the sampler.
 
-        :param variables_types: A dictionary associating the name of each variable to its type. The type can be either
-            ["categorical", "bool", "int", "float"]. If None, then the variables types must be
-            set using the set_variables method before sampling.
-        :type variables_types:  dict
-        :param variables_values:
-            A dictionary associating the name of each variable to its possible values.
-            Continuous variables (int, float) must be a range [min, max],
-            categorical/bool variables must be a list of possible values
-        :type variables_values:  dict
-        :param variables_mask: A list of variables to keep. If None, all variables are kept.
-        :type variables_mask: list
+        :param variables: A dictionary associating the name of each variable to its ValueContainer.
+        :type variables:  dict
         """
-        self.variables_values = None
-        self.variables_types = None
+        self.variables = None
 
         # Set the variables using a setter to ensure that overriding classes can perform
         # additional checks if needed
-        self.set_variables(variables_types, variables_values, variables_mask)
+        self.set_variables(variables)
 
     def _raise_if_variables_not_set(self):
         """
         :raise SamplerError: Raise an exception if the variables are not set,
-        or if the variables are empty (after masking for example).
+        or if the variables are empty.
         """
 
-        if self.variables_values is None or self.variables_types is None:
+        if self.variables is None:
             raise SamplerError("The sampler variables (values and/or types) were not set!")
-        if len(self.variables_values) == 0 or len(self.variables_types) == 0:
-            raise SamplerError("The passed variables were empty, or all variables were masked out!")
+        if len(self.variables) == 0:
+            raise SamplerError("The passed variables were empty!")
 
-    def set_variables(self, variables_types: dict, variables_values: dict, mask: list = None):
+    def set_variables(self, variables: dict):
         """
         Sets the variables to be sampled.
 
-        :param variables_types:
-            A dictionary associating the name of each variable to its type. The type can be either
-            ["categorical", "bool", "int", "float"].
-            If none, then the variables are cleared and must be set again before sampling.
-        :type variables_types: dict
-        :param variables_values:
-            A dictionary associating the name of each variable to its possible values. The possible
-            values must be a list of values for categorical variables, or a tuple (min, max) for
-            numerical variables.
-            If none, then the variables are cleared and must be set again before sampling.
-        :type variables_values: dict
-        :param mask:
-            A list of variables to keep. If None, all variables are kept. This can be useful when
-            the variables to be samples are a subset of the variables defined in the sampler.
-        :type mask: list
+        :param variables:
+            A dictionary associating the name of each variable to its ValueContainer.
         """
 
-        # Filter out masked variables
-        variables_values = _mask_variables(variables_values, mask)
-        self.variables_values = variables_values
-
-        variables_types = _mask_variables(variables_types, mask)
-        self.variables_types = variables_types
-
-        if variables_values is None or variables_types is None:
-            return
-
-        # Ensure that both dict contain the same keys (variables)
-        assert sorted(self.variables_types.keys()) == sorted(self.variables_values.keys())
+        self.variables = variables

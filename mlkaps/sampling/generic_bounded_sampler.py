@@ -16,20 +16,15 @@ from .static_sampler import StaticSampler
 from .variable_mapping import map_float_to_variables
 
 
-def convert_variables_bounds_to_numeric(variables_types, variables_values):
+def convert_variables_bounds_to_numeric(variables):
     """
     Convert a dictionary of variables bounds to a dictionary of numeric bounds:
     - Categorical variables are converted to [0, n_values-1]
     - For numeric variables, the bounds are set to [min, max] where min and max are the
       lowest and highest possible values for the variable.
 
-    :param variables_types: A dictionary associating the name of each variable to its type. The type can be either
-        "categorical", "bool", "int" or "float".
-    :type variables_types: dict
-    :param variables_values: A dictionary associating the name of each variable to its possible values. The possible
-        values must be a list of values for categorical variables, or a tuple (min, max) for
-        numerical variables.
-    :type variables_values: dict
+    :param variables: A dictionary associating the name of each variable to its ValueContainer.
+    :type variables: dict
 
     :return: A dictionary associating the name of each variable to its bounds.
     :rtype: dict
@@ -37,7 +32,7 @@ def convert_variables_bounds_to_numeric(variables_types, variables_values):
 
     # Generate a list of bounds for each parameter
     bounds = {}
-    for variable, values in variables_values.items():
+    for variable, values in variables.items():
         bounds[variable] = values.get_sampling_bounds()
     return bounds
 
@@ -52,9 +47,7 @@ class GenericBoundedSampler(StaticSampler):
         self,
         *,
         generic_sampler_type,
-        variable_types: dict | None = None,
-        variable_values: dict | None = None,
-        variable_mask: list | None = None,
+        variables: dict | None = None,
     ):
         """
         Build a new generic sampler using the generic_sampler_type sampling method
@@ -65,32 +58,16 @@ class GenericBoundedSampler(StaticSampler):
             corresponding to the bounds of each variable
             - Must have a __call__ method, returning 2d list of samples
         :type generic_sampler_type: type
-        :param variable_types:
-            A dictionary associating the name of each variable to its type. The type can be either
-            "Categorical", "Boolean", "int" or "float".
-            If None, the bounds are not generated, and must be set later using set_variables(...)
-            Defaults to None
-        :type variable_types: dict | None, optional
-        :param variable_values:
-            A dictionary associating the name of each variable to its possible values. The possible
-            values must be a list of values for categorical variables, or a tuple (min, max) for
-            numerical variables.
-            If None, the bounds are not generated, and must be set later using set_variables(...)
-            Defaults to None
+        :param variables:
+            A dictionary associating the name of each variable to its ValueContainer.
         :type variable_values: dict | None, optional
-        :param variable_mask:
-            A list of names of variables to sample. If None, all variables are sampled. Else,
-            only the variables in the list are sampled.
-            Can be useful when the variables to samples are a subset of the variables in
-            variable_types. Defaults to None
-        :type variable_mask: list | None, optional
         """
 
         self.sampler_type = generic_sampler_type
         # Calling the parent constructor will call set_variables()
         # We must define the bounds to be empty before
         self.bounds = None
-        super().__init__(variable_types, variable_values, variable_mask)
+        super().__init__(variables)
 
     def _generate_bounds(self):
         """
@@ -100,25 +77,19 @@ class GenericBoundedSampler(StaticSampler):
         :rtype: dict(str, list)
         """
 
-        if self.variables_types is None or self.variables_values is None:
+        if self.variables is None:
             return None
-        return convert_variables_bounds_to_numeric(self.variables_types, self.variables_values)
+        return convert_variables_bounds_to_numeric(self.variables)
 
-    def set_variables(self, variables_types, variables_values, mask=None):
+    def set_variables(self, variables):
         """
         Set the variables used in the sampling process.
 
-        :param variables_types: Contains the types for each variable, must be one of ["int", "float", "bool", "categorical"]
-        :type variables_types: dict
-        :param variables_values: Contain the possible values for each variable:
-            For continuous types (int, float), must be a range [min, max].
-            For categorical/bool types, must be a list of possible values.
-        :type variables_values: dict
-        :param mask: An iterable containing a list of variables to consider during the sampling process
-            Variables not contained in the mask will be ignored
+        :param variables: Contain the possible ValueContainer for each variable.
+        :type variables: dict
         """
 
-        super().set_variables(variables_types, variables_values, mask)
+        super().set_variables(variables)
         self.bounds = self._generate_bounds()
 
     def _generate_samples_from_bounds(self, n_samples: int):
@@ -167,7 +138,7 @@ class GenericBoundedSampler(StaticSampler):
         random_samples = self._generate_samples_from_bounds(n_samples)
 
         # Map the generated samples with numeric features back to the original variables types
-        translated_columns = map_float_to_variables(random_samples, self.variables_types, self.variables_values)
+        translated_columns = map_float_to_variables(random_samples, self.variables)
 
         columns = sorted(self.bounds.keys())
 
@@ -181,33 +152,17 @@ class LhsSampler(GenericBoundedSampler):
     Sampler based on Latin Hypercube Sampling.
     """
 
-    def __init__(
-        self, *, variable_types: dict | None = None, variable_values: dict | None = None, variable_mask: list | None = None
-    ):
+    def __init__(self, *, variables: dict | None = None):
         """
         Create a new LHS (Latin Hypercube Sampling) sampler.
 
         :param variable_types:
-            A dictionary associating the name of each variable to its type. The type can be either
-            "Categorical", "Boolean", "int" or "float".
-            If None, the variables must be set later using set_variables(...). Defaults to None
+            A dictionary associating the name of each variable to its ValueContainer.
         :type variable_types: dict | None, optional
-        :param variable_values:
-            A dictionary associating the name of each variable to its possible values. The possible
-            values must be a list of values for categorical variables, or a tuple (min, max) for
-            numerical variables.
-            If None, the variables must be set later using set_variables(...). Defaults to None
-        :type variable_values: dict | None, optional
-        :param variable_mask:
-            A list of names of variables to sample. If None, all variables are sampled. Else,
-            only the variables in the list are sampled. Defaults to None
-        :type variable_mask: list | None, optional
         """
         super().__init__(
             generic_sampler_type=LHS,
-            variable_types=variable_types,
-            variable_values=variable_values,
-            variable_mask=variable_mask,
+            variables=variables,
         )
 
 
@@ -216,31 +171,15 @@ class RandomSampler(GenericBoundedSampler):
     Sampler based on random uniform sampling
     """
 
-    def __init__(
-        self, *, variable_types: dict | None = None, variable_values: dict | None = None, variable_mask: list | None = None
-    ):
+    def __init__(self, *, variables: dict | None = None):
         """
         Create a new Random uniform sampler.
 
         :param variable_types:
-            A dictionary associating the name of each variable to its type. The type can be either
-            "Categorical", "Boolean", "int" or "float".
-            If None, the variables must be set later using set_variables(...). Defaults to None
+            A dictionary associating the name of each variable to its ValueContainer.
         :type variable_types: dict | None, optional
-        :param variable_values:
-            A dictionary associating the name of each variable to its possible values. The possible
-            values must be a list of values for categorical variables, or a tuple (min, max) for
-            numerical variables.
-            If None, the variables must be set later using set_variables(...). Defaults to None
-        :type variable_values: dict | None, optional
-        :param variable_mask:
-            A list of names of variables to sample. If None, all variables are sampled. Else,
-            only the variables in the list are sampled. Defaults to None
-        :type variable_mask: list | None, optional
         """
         super().__init__(
             generic_sampler_type=Random,
-            variable_types=variable_types,
-            variable_values=variable_values,
-            variable_mask=variable_mask,
+            variables=variables,
         )

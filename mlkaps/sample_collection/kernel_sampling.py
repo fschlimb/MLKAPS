@@ -14,6 +14,8 @@ import textwrap
 from mlkaps.configuration import ExperimentConfig
 from mlkaps.sampling.sampler_factory import SamplerFactory
 from mlkaps.sampling.adaptive.ga_adaptive import GAAdaptiveSampler
+from mlkaps.sampling.experiment import Objective
+from mlkaps.sampling import ValueRange, ValueSequence
 from mlkaps.sampling.adaptive import (
     StoppingCriterionFactory,
     AdaptiveSamplingOrchestrator,
@@ -838,7 +840,8 @@ def _build_kernel_sampler(config: ExperimentConfig, config_dict: dict, samples_c
     return sampler
 
 
-def sample_kernel(config: ExperimentConfig, config_dict: dict, samples_checkpoint: SamplesCheckpoint) -> pd.DataFrame:
+def sample_kernel() -> pd.DataFrame:
+    # config: ExperimentConfig, config_dict: dict, samples_checkpoint: SamplesCheckpoint
     """
     Run the kernel sampling module on the user kernel
 
@@ -857,7 +860,36 @@ def sample_kernel(config: ExperimentConfig, config_dict: dict, samples_checkpoin
         A labelled dataset of sampled points,  The dataset is also logged in the kernel_sample csv file.
 
     """
-    sampler = _build_kernel_sampler(config, config_dict, samples_checkpoint)
-    res = sampler()
-    samples_checkpoint.consistency_check(res)
-    return res
+    # sampler = _build_kernel_sampler(config, config_dict, samples_checkpoint)
+    # res = sampler()
+    # samples_checkpoint.consistency_check(res)
+    # return res
+
+    def kernel(args: dict):
+        return {"performance": 4711}
+
+    inputs = {"input1": ValueRange(0, 10), "input2": ValueSequence(10, 100, 10, type=int)}
+    parameters = {"a": ValueRange(0, 10), "b": ValueRange(10, 100)}
+    all_params = {**inputs, **parameters}
+    objective = Objective("performance", "maximize", 800)
+
+    resolver = DiscardResolver()
+    out_dir = "test_output_dir/"
+    checkpoint = SamplesCheckpoint(output_directory=out_dir, parameters=all_params, objectives=[objective])
+    runner = MonoFunctionHarness(function=kernel, objectives=[objective], timeout=77)
+    executor = MonoKernelExecutor(runner=runner, resolver=resolver, samples_checkpoint=checkpoint)
+
+    sampler = GAAdaptiveSampler(
+        execution_function=executor,
+        objectives=objective,
+        parameters=all_params,
+        input_names=inputs.keys(),
+        n_samples=100,
+        samples_per_iteration=10,
+        output_directory=out_dir,
+        samples_checkpoint=checkpoint,
+        # ...,
+    )
+
+    samples = sampler.run()
+    print(f"Generated samples:\n{samples}")

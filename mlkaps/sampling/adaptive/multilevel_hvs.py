@@ -29,8 +29,7 @@ class MultilevelHVS(AdaptiveSampler):
         self,
         *,
         features_levels: list[list] = None,
-        variables_types: dict | None = None,
-        variables_values: dict | None = None,
+        variables: dict | None = None,
     ):
         """
         Create a new MultilevelHVS sampler.
@@ -41,25 +40,14 @@ class MultilevelHVS(AdaptiveSampler):
             If None, must be set later using set_per_level_features method.
             Defaults to None
         :type features_levels: list[list] | None, optional
-        :param variables_types:
-            A dictionary containing the types of the variables to sample.
-            The keys must be the name of the variables, and the values must be one of
-            ["int", "float", "categorical", "Boolean"].
-            If None, the variables must be set later using the set_variables method.
-            Defaults to None
-        :type variables_types: dict | None, optional
-        :param variables_values:
-            A dictionary containing the values of the variables to sample.
-            The keys must be the name of the variables, and the values must be a tuple
-            (min, max) containing the bounds of the variable for numerical variables, or a list
-            containing the possible values for categorical variables.
-            If None, the variables must be set later using the set_variables method.
-            Defaults to None
-        :type variables_values: dict | None, optional
+        :param variables:
+            A dictionary containing the ValueContainers of the variables to sample.
+            The keys must be the name of the variables.
+        :type variables: dict | None, optional
         """
-        self.hvs = HVSampler(variables_types=variables_types, variables_values=variables_values, error_metric="cov")
+        self.hvs = HVSampler(variables=variables, error_metric="cov")
 
-        super().__init__(variables_types, variables_values)
+        super().__init__(variables)
         self.features_levels = features_levels
         self.partitions = []
 
@@ -72,9 +60,9 @@ class MultilevelHVS(AdaptiveSampler):
     def set_per_level_features(self, leveled_features: list[list]):
         self.features_levels = leveled_features
 
-    def set_variables(self, variables_types, variables_values, mask=None):
-        super().set_variables(variables_types, variables_values, mask)
-        self.hvs.set_variables(variables_types, variables_values, mask)
+    def set_variables(self, variables, mask=None):
+        super().set_variables(variables, mask)
+        self.hvs.set_variables(variables, mask)
 
     def sample(
         self,
@@ -90,7 +78,7 @@ class MultilevelHVS(AdaptiveSampler):
         if data is None or len(data) == 0:
             return self.hvs.sample(n_samples, data, execution_func)
         # The objectives are the columns that are not labelled as features
-        objectives = [k for k in data.columns if k not in self.variables_values.keys()]
+        objectives = [k for k in data.columns if k not in self.variables.keys()]
         n_samples_per_objective = max(1, n_samples // len(objectives))
 
         # We sample separately for each objective
@@ -117,7 +105,7 @@ class MultilevelHVS(AdaptiveSampler):
     ) -> pd.DataFrame:
 
         # Run HVS based on the features in the current level
-        features = {k: v for k, v in self.variables_values.items() if k in leveled_features[0]}
+        features = {k: v for k, v in self.variables.items() if k in leveled_features[0]}
         next_features = leveled_features[1:]
 
         # Even if we're cutting on some different axis, we need to propagate all the axis
@@ -125,7 +113,7 @@ class MultilevelHVS(AdaptiveSampler):
         # For example, if the current partition has A = [0, 2.5]
         # But we're cutting on B, we still need to respect the range for A
         if axes is None:
-            axes = self.variables_values.copy()
+            axes = self.variables.copy()
 
         new_samples = None
         # We reached the last level, partition based on current features, and samples using HVS

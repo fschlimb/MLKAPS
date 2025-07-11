@@ -509,7 +509,7 @@ class AdaptiveSamplingOrchestrator:
     >>> from mlkaps.sampling.adaptive import AdaptiveSamplingOrchestrator, HVSampler
     >>> from mlkaps.sampling import ValueSequence
     >>> features = {"a": ValueSequence(0, 5, 1, type=int), "b": ValueSequence(0, 5, 1, type=int)}
-    >>> sampler = HVSampler(variables_types={"a": "int", "b": "int"}, variables_values=features)
+    >>> sampler = HVSampler(variables=features)
     >>> f = lambda df: pd.concat([df, df["a"] + df["b"]], axis=1)
     >>> stopping_criteria = [MaxNSampleStoppingCriterion(n_samples=200)]
     >>> orchestrator = AdaptiveSamplingOrchestrator(features=features, execution_function=f, adaptive_sampler=sampler,

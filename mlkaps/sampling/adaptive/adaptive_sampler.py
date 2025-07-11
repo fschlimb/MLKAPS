@@ -22,33 +22,16 @@ class AdaptiveSampler(Sampler):
     This is made so the sampler can track custom metrics and dump them to disk if needed
     """
 
-    def __init__(
-        self,
-        variables_types: dict = None,
-        variables_values: dict = None,
-        mask: list = None,
-    ):
+    def __init__(self, variables: dict | None = None):
         """
         Initialize the sampler
 
-        :param variables_types:
-            The types of the variables to be sampled, as a dict of {variable_name: variable_type}
-            The type can be either ["int", "float", "categorical", "bool"]
-            If none is provided, the variables must be set later with set_variables(...)
-        :type variables_types: dict
-        :param variables_values:
-            The values of the variables to be sampled, as a dict of {variable_name: variable_values}
-            The values must be a tuple of (min, max) for numerical variables, or a list of
-            possible values for categorical variables
-            If none is provided, the variables must be set later with set_variables(...)
-        :type variables_values: dict
-        :param mask:
-            A list of variables to filter out from the variables_types and variables_values
-            If none is provided, all variables are kept
-        :type mask: list
+        :param variables:
+            The types of the variables to be sampled, as a dict of {variable_name: ValueContainer}
+        :type variables: dict | None, optional
         """
 
-        super().__init__(variables_types, variables_values, mask)
+        super().__init__(variables)
 
     def reset(self):
         """

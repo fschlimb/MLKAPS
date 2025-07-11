@@ -52,10 +52,10 @@ class MonoKernelExecutor:
 
     def __init__(
         self,
+        *,
         runner,
         resolver,
         samples_checkpoint,
-        *,
         progress_bar: bool | object = False,
         pre_execution_callbacks: None | Iterable[callable] = None,
     ):

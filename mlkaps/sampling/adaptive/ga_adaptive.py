@@ -35,6 +35,7 @@ import time
 from mlkaps.sample_collection.samples_checkpoint import SamplesCheckpoint
 
 from mlkaps.modeling.encoding import encode_dataframe
+from mlkaps.sampling.experiment import Objective
 
 
 class GAAdaptiveSampler:
@@ -50,13 +51,12 @@ class GAAdaptiveSampler:
         *,
         # Required parameters - no sensible defaults
         execution_function: Callable[[pd.DataFrame], pd.DataFrame],
+        output_directory: pathlib.Path,
         samples_checkpoint: SamplesCheckpoint,
         n_samples: int,
-        output_directory: pathlib.Path,
-        objectives: list,
-        parameters_type: dict,
-        feature_values: dict,
-        input_parameters: list,
+        objectives: list[Objective] | Objective,
+        parameters: dict,
+        input_names: list[str] | None = None,
         # Required GA parameters with sensible defaults
         samples_per_iteration: int,
         bootstrap_ratio: float = 0.2,
@@ -77,12 +77,10 @@ class GAAdaptiveSampler:
         :type output_directory: pathlib.Path
         :param objectives: List of objective function names
         :type objectives: list
-        :param parameters_type: Dictionary mapping parameter names to their types
-        :type parameters_type: dict
-        :param feature_values: Dictionary of feature values for sampling
-        :type feature_values: dict
-        :param input_parameters: List of input parameter names
-        :type input_parameters: list
+        :param parameters: Dictionary mapping parameter names to their ValueContainers
+        :type parameters: dict
+        :param input_names: List of names of the input parameters
+        :type input_names: list[str] | None
         :param samples_per_iteration: The number of samples to take per iterations of the GA loop
         :type samples_per_iteration: int
         :param bootstrap_ratio: The ratio (value between 0-1) of the total number of samples to take
@@ -102,11 +100,9 @@ class GAAdaptiveSampler:
         """
 
         # Store configuration parameters directly
-        self.output_directory = output_directory
-        self.objectives = objectives
-        self.parameters_type = parameters_type
-        self.features = feature_values
-        self.input_features = input_parameters
+        self.objectives = objectives if isinstance(objectives, list) else [objectives]
+        self.parameters = parameters
+        self.input_names = input_names
 
         self.execution_function = execution_function
 
@@ -125,13 +121,12 @@ class GAAdaptiveSampler:
 
         # HVS sampler for exploration
         self.hvs_sampler = HVSampler(
-            variables_types=self.parameters_type,
-            variables_values=self.features,
+            variables=self.parameters,
             error_metric="cov",
         )
 
         # FIXME: dirty quick-restart
-        self.output_path = self.output_directory / "kernel_sampling/samples.csv"
+        self.output_path = pathlib.Path(output_directory) / "kernel_sampling/samples.csv"
 
         self.models = {}
         self.iteration = 0
@@ -160,7 +155,7 @@ class GAAdaptiveSampler:
         if self.final_ga_ratio < self.initial_ga_ratio:
             raise SamplerError("final_ga_ratio must be greater than initial_ga_ratio")
 
-    def __call__(self) -> pd.DataFrame:
+    def run(self) -> pd.DataFrame:
         """
         Run the sampling process using the parameters used in the constructor.
         First bootstrap using LHS, then run the main sampling loop using a combination
@@ -234,7 +229,7 @@ class GAAdaptiveSampler:
         # Bootstrap the sampling with an LHS
         pbar.set_description("GA-Adaptive: bootstrapping with LHS")
 
-        sampler = LhsSampler(variable_types=self.parameters_type, variable_values=self.features)
+        sampler = LhsSampler(variables=self.parameters)
         lhs_samples = sampler.sample(n_samples)
 
         return self._sample_kernel(lhs_samples)
@@ -273,7 +268,7 @@ class GAAdaptiveSampler:
                 delta = max(0, leftover_samples - len(new_points))
             # hvs_samples = self._pick_hvs_samples(delta, samples)
 
-            sampler = RandomSampler(variable_types=self.parameters_type, variable_values=self.features)
+            sampler = RandomSampler(variables=self.parameters)
             random_samples = sampler.sample(delta)
             random_samples = pd.concat([samples, self._sample_kernel(random_samples)])
 
@@ -320,7 +315,7 @@ class GAAdaptiveSampler:
         """
 
         sampler = RandomSampler(
-            variable_types=self.parameters_type, variable_values=self.features, variable_mask=self.input_features
+            variables={k: v for k, v in self.parameters.items() if k in self.input_names},
         )
         return sampler.sample(n_points)
 
@@ -376,12 +371,11 @@ class GAAdaptiveSampler:
         # Create a minimal config-like object for DesignParametersProblem
         # This is a temporary solution until DesignParametersProblem is also refactored
         class ConfigProxy:
-            def __init__(self, parameters_type, feature_values, objectives):
-                self.parameters_type = parameters_type
-                self.feature_values = feature_values
+            def __init__(self, parameters, objectives):
+                self.parameters = parameters
                 self.objectives = objectives
 
-        config_proxy = ConfigProxy(self.parameters_type, self.features, self.objectives)
+        config_proxy = ConfigProxy(self.parameters, self.objectives)
 
         # Create the GA object
         problem = DesignParametersProblem(config_proxy, models)
@@ -431,7 +425,7 @@ class GAAdaptiveSampler:
 
         begin = time.time()
 
-        sampler = RandomSampler(variable_types=self.parameters_type, variable_values=self.features)
+        sampler = RandomSampler(variables=self.parameters)
 
         samples = sampler.sample(1000000)
 

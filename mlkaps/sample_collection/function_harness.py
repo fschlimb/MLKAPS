@@ -16,6 +16,8 @@ from typing import Callable
 
 from .common import KernelSamplingError
 
+from mlkaps.sampling.experiment import Objective
+
 
 def is_pickleable(obj):
     try:
@@ -459,8 +461,9 @@ class MonoFunctionHarness:
 
     def __init__(
         self,
+        *,
         function: Callable[[dict], dict] | str | pathlib.Path | FunctionPath,
-        expected_keys: list[str],
+        objectives: list[Objective] | Objective,
         timeout: float | None = None,
     ):
         if not callable(function):
@@ -477,15 +480,15 @@ class MonoFunctionHarness:
 
         self.function = function
         self.timeout = timeout
-        self.expected_keys = expected_keys
+        self.objectives = objectives if isinstance(objectives, list) else [objectives]
 
     def _verify_result(self, result):
 
         if not isinstance(result, dict):
             raise KernelSamplingError(f"Expected a dict as output, received {type(result)} ({result})")
 
-        if not all(k in result for k in self.expected_keys):
-            raise KernelSamplingError(f"Expected keys {self.expected_keys} not found in result {result}")
+        if not all(k.name in result for k in self.objectives):
+            raise KernelSamplingError(f"Expected keys {self.objectives} not found in result {result}")
 
     def __call__(self, sample: dict):
         res_type = namedtuple("FunctionRunnerOutput", ["data", "error", "timed_out"])

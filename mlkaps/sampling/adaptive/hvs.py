@@ -473,7 +473,7 @@ class HVSampler(AdaptiveSampler):
     >>> # Define the function to sample. which MUST return a dataframe containing the original
     >>> # dataframe, and the sampled values as new columns
     >>> f = lambda df: pd.concat([df, df.apply(lambda x: x.iloc[0], axis=1)], axis=1)
-    >>> sampler = HVSampler(variables_types={"x": "int"}, variables_values=features)
+    >>> sampler = HVSampler(variables=features)
     >>> samples = sampler.sample(10, None, f)
     >>> # In this case, x = y for all samples
     >>> all(samples.iloc[:, 0] == samples.iloc[:, 1])
@@ -496,29 +496,16 @@ class HVSampler(AdaptiveSampler):
     def __init__(
         self,
         *,
-        variables_types: dict | None = None,
-        variables_values: dict | None = None,
+        variables: dict | None = None,
         error_metric: str = "variance",
         min_samples_per_leaf: int = 15,
     ):
         """
         Create a new HVS sampler
 
-        :param variables_types:
-            A dictionary containing the types of the variables to sample.
-            The keys must be the name of the variables, and the values must be one of
-            ["int", "float", "categorical", "bool"].
-            If None, the variables must be set later using the set_variables method.
-            Defaults to None
-        :type variables_types: dict | None, optional
-        :param variables_values: A dictionary containing the values of the variables to sample.
-            The keys must be the name of the variables, and the values must be a tuple
-            (min, max) containing the bounds of the variable for numerical variables, or a list
-            containing the possible values for categorical variables.
-            If None, the variables must be set later using the set_variables method.
-            Defaults to None
-        :type variables_values: dict | None, optional
-        :param error_metric:
+        :param variables:
+            A dictionary containing the ValueContainers of the variables to sample.
+        :type variables: dict | None, optional
             name of the error metric to use, one of ["variance", "cov"], defaults to "variance"
         :type error_metric: str, optional
         :param min_samples_per_leaf:
@@ -533,7 +520,7 @@ class HVSampler(AdaptiveSampler):
         self.numerical_features = None
         self.min_samples_per_leaf = min_samples_per_leaf
 
-        super().__init__(variables_types, variables_values)
+        super().__init__(variables)
 
         self.variances = None
         self.errors = None
@@ -548,8 +535,8 @@ class HVSampler(AdaptiveSampler):
         self.errors = None
         self.final_partitions = None
 
-    def set_variables(self, variables_types: dict, variables_values: dict, mask: list = None):
-        super().set_variables(variables_types, variables_values, mask)
+    def set_variables(self, variables: dict):
+        super().set_variables(variables)
         self._build_bounded_features()
 
     def _build_bounded_features(self):
@@ -560,14 +547,14 @@ class HVSampler(AdaptiveSampler):
 
         self.has_mapped_features = False
 
-        if self.variables_values is None or self.variables_types is None:
+        if self.variables is None:
             return
 
-        self.numerical_features = self.variables_values.copy()
+        self.numerical_features = self.variables.copy()
 
         # Check whether any of the features is no continuous
         # If true, then the features are mapped to numeric values (indices)
-        if any(not v.is_continuous() for v in self.variables_values.values()):
+        if any(not v.is_continuous() for v in self.variables.values()):
             self.has_mapped_features = True
 
     def dump(self, output_directory: Path):
@@ -620,7 +607,7 @@ class HVSampler(AdaptiveSampler):
 
         # Use LHS to generate a starting dataset
         # Extract the features ranges as ndarray
-        samples = LhsSampler(variable_types=self.variables_types, variable_values=self.variables_values)(n_samples)
+        samples = LhsSampler(variables=self.variables)(n_samples)
         labels = execution_func(samples)
 
         return labels
@@ -658,7 +645,7 @@ class HVSampler(AdaptiveSampler):
         if n_samples == 0:
             return samples
 
-        self._verify_arguments(n_samples, execution_func, self.variables_values)
+        self._verify_arguments(n_samples, execution_func, self.variables)
 
         # If no data is provided, we bootstrap the dataset
         if samples is None or len(samples) == 0:
@@ -806,7 +793,7 @@ class HVSampler(AdaptiveSampler):
 
         mapped_data = None
         if reverse:
-            mapped_data = map_float_to_variables(samples, self.variables_types, self.variables_values)
+            mapped_data = map_float_to_variables(samples, self.variables)
         else:
-            mapped_data = map_variables_to_numeric(samples, self.variables_types, self.variables_values)
+            mapped_data = map_variables_to_numeric(samples, self.variables)
         return mapped_data

@@ -14,16 +14,22 @@ import csv
 
 
 class SamplesCheckpoint:
-    def __init__(self, output_directory, parameters_type: dict, objectives: list):
+    def __init__(self, *, output_directory, parameters: dict, objectives: list):
+        """
+        Initialize the sample checkpoint for kernel sampling.
 
-        # parameters_type is a dict containing the kernel inputs and the design parameters,
-        # and their types.
+        :param output_directory: Path to the output directory where sample files will be stored.
+            Can be a string or pathlib.Path.
+        :type output_directory: str or pathlib.Path
+        :param parameters: Dictionary containing kernel inputs and design parameters.
+        :type parameters: dict
+        :param objectives: List of objectives.
+        :type objectives: list
 
-        # objectives is a list of the objectives
-
-        # Capture path of output file.
+        The output file will be created in the 'kernel_sampling' subdirectory of the given output directory.
+        If the file exists, new samples will be appended; otherwise, it will be created upon first write.
+        """
         # Do not create the file here.  If it does exist, we will append new samples.
-        # If it does not exist, we will create it when we first write to it.
         if isinstance(output_directory, str):
             output_directory = pathlib.Path(output_directory)
 
@@ -31,10 +37,8 @@ class SamplesCheckpoint:
         self.output_path = output_directory / "samples.csv"
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        self.parameters_type = parameters_type
-        self.feature_names = sorted(list(parameters_type.keys()))
-        self.objective_names = sorted(objectives)
-        self.column_names = self.feature_names + self.objective_names
+        self.parameters = parameters
+        self.column_names = [parameters.keys()] + [x.name for x in objectives]  # sorted needed?
         self.restarted = False
 
     def delete_file(self):
@@ -90,12 +94,12 @@ class SamplesCheckpoint:
             ), f"Sample names {sample_names} do not match expected column names {self.column_names}"
 
             # expected types  (note we only have types for parameters, not for the objective)
-            for name in self.parameters_type:
-                sample_type = samples.dtypes[name]
-                expected_type = self.parameters_type[name]
+            for param in self.parameters:
+                sample_type = samples.dtypes[param.name]
+                expected_type = param.get_dtype()
                 assert self._compatible_types(
                     sample_type, expected_type
-                ), f"Sample type {sample_type} of parameter {name} is not compatible with {expected_type}"
+                ), f"Sample type {sample_type} of parameter {param} is not compatible with {expected_type}"
 
             # check all the elements of each column have the same type
             for column in samples.columns:
@@ -112,7 +116,7 @@ class SamplesCheckpoint:
 
     def _compatible_types(self, sample_type, expected_type):
         # sample_type is from the dataframe
-        # expected_type is from ML-KAPS parameters_type
+        # expected_type is from ML-KAPS parameter
         if sample_type == "float64" and expected_type == "float":
             return True
         if sample_type == "int64" and expected_type == "int":
