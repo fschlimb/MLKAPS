@@ -18,16 +18,17 @@ from .variable_mapping import map_float_to_variables
 
 def convert_variables_bounds_to_numeric(variables):
     """
-    Convert a dictionary of variables bounds to a dictionary of numeric bounds:
+    Convert a dictionary of variables bounds to a dictionary of numeric bounds.
+
     - Categorical variables are converted to [0, n_values-1]
     - For numeric variables, the bounds are set to [min, max] where min and max are the
       lowest and highest possible values for the variable.
 
-    :param variables: A dictionary associating the name of each variable to its ValueContainer.
-    :type variables: dict
+    Args:
+        variables (dict): A dictionary associating the name of each variable to its ValueContainer.
 
-    :return: A dictionary associating the name of each variable to its bounds.
-    :rtype: dict
+    Returns:
+        dict: A dictionary associating the name of each variable to its bounds.
     """
 
     # Generate a list of bounds for each parameter
@@ -50,17 +51,14 @@ class GenericBoundedSampler(StaticSampler):
         variables: dict | None = None,
     ):
         """
-        Build a new generic sampler using the generic_sampler_type sampling method
+        Build a new generic sampler using the generic_sampler_type sampling method.
 
-        :param generic_sampler_type:
-            A sampling object that uses smt API;
-            - Must have a constructor with a xlimits argument, defining a list of list,
-            corresponding to the bounds of each variable
-            - Must have a __call__ method, returning 2d list of samples
-        :type generic_sampler_type: type
-        :param variables:
-            A dictionary associating the name of each variable to its ValueContainer.
-        :type variable_values: dict | None, optional
+        Args:
+            generic_sampler_type (type): A sampling object that uses smt API.
+                Must have a constructor with a xlimits argument, defining a list of lists
+                corresponding to the bounds of each variable.
+                Must have a __call__ method, returning 2d list of samples.
+            variables (dict | None, optional): A dictionary associating the name of each variable to its ValueContainer.
         """
 
         self.sampler_type = generic_sampler_type
@@ -71,10 +69,10 @@ class GenericBoundedSampler(StaticSampler):
 
     def _generate_bounds(self):
         """
-        Generate the bounds of the sampling process
+        Generate the bounds of the sampling process.
 
-        :return: A dictionary containing the bounds for each variables
-        :rtype: dict(str, list)
+        Returns:
+            dict[str, list] | None: A dictionary containing the bounds for each variable, or None if variables are not set.
         """
 
         if self.variables is None:
@@ -85,8 +83,8 @@ class GenericBoundedSampler(StaticSampler):
         """
         Set the variables used in the sampling process.
 
-        :param variables: Contain the possible ValueContainer for each variable.
-        :type variables: dict
+        Args:
+            variables (dict): Dictionary containing the possible ValueContainer for each variable.
         """
 
         super().set_variables(variables)
@@ -94,15 +92,16 @@ class GenericBoundedSampler(StaticSampler):
 
     def _generate_samples_from_bounds(self, n_samples: int):
         """
-        Execute the sampler on the bounded variable space
+        Execute the sampler on the bounded variable space.
 
-        :raise SamplerError: raise an exception if the variables were not set before usage, or if the sampler failed
+        Args:
+            n_samples (int): The number of samples to take.
 
-        :param n_samples: The number of samples to take
-        :type n_samples: int
+        Returns:
+            pd.DataFrame: A dataframe containing the generated samples.
 
-        :return: A list of samples
-        :rtype: pandas.DataFrame
+        Raises:
+            SamplerError: If the variables were not set before usage, or if the sampler failed.
         """
 
         self._raise_if_variables_not_set()
@@ -128,6 +127,18 @@ class GenericBoundedSampler(StaticSampler):
         return ordered_random_samples
 
     def sample(self, n_samples: int) -> pd.DataFrame | None:
+        """
+        Generate samples using the configured sampling method.
+
+        Args:
+            n_samples (int): The number of samples to generate.
+
+        Returns:
+            pd.DataFrame | None: A dataframe containing the generated samples, or None if n_samples is 0.
+
+        Raises:
+            SamplerError: If n_samples is negative or if sampling fails.
+        """
 
         if n_samples == 0:
             return None
@@ -156,9 +167,8 @@ class LhsSampler(GenericBoundedSampler):
         """
         Create a new LHS (Latin Hypercube Sampling) sampler.
 
-        :param variable_types:
-            A dictionary associating the name of each variable to its ValueContainer.
-        :type variable_types: dict | None, optional
+        Args:
+            variables (dict | None, optional): A dictionary associating the name of each variable to its ValueContainer.
         """
         super().__init__(
             generic_sampler_type=LHS,
@@ -168,16 +178,15 @@ class LhsSampler(GenericBoundedSampler):
 
 class RandomSampler(GenericBoundedSampler):
     """
-    Sampler based on random uniform sampling
+    Sampler based on random uniform sampling.
     """
 
     def __init__(self, *, variables: dict | None = None):
         """
-        Create a new Random uniform sampler.
+        Create a new random uniform sampler.
 
-        :param variable_types:
-            A dictionary associating the name of each variable to its ValueContainer.
-        :type variable_types: dict | None, optional
+        Args:
+            variables (dict | None, optional): A dictionary associating the name of each variable to its ValueContainer.
         """
         super().__init__(
             generic_sampler_type=Random,

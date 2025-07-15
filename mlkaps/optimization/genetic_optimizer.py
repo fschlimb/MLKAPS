@@ -44,15 +44,11 @@ def _get_parameter_types(parameters: dict) -> dict:
     """
     Extract parameter types from a parameters dictionary using get_dtype() on each parameter value container.
 
-    Parameters
-    ----------
-    parameters : dict
-        Dictionary mapping parameter names to their parameter value objects (ValueContainer instances)
+    Args:
+        parameters (dict): Dictionary mapping parameter names to their parameter value objects (ValueContainer instances).
 
-    Returns
-    -------
-    dict
-        Dictionary mapping parameter names to their types as strings
+    Returns:
+        dict: Dictionary mapping parameter names to their types as strings.
     """
     types = {}
     for name, param in parameters.items():
@@ -74,17 +70,16 @@ def _get_parameter_types(parameters: dict) -> dict:
 
 def _parse_genetic_optimization_config(config_dict: dict):
     """
-    Extract the genetic optimization parameters from the configuration dictionary
+    Extract the genetic optimization parameters from the configuration dictionary.
 
-    Parameters
-    ----------
-    config_dict : dict
-        Configuration dictionary containing optimization parameters
+    Args:
+        config_dict (dict): Configuration dictionary containing optimization parameters.
 
-    Returns
-    -------
-    dict
-        Dictionary containing parsed optimization parameters
+    Returns:
+        dict: Dictionary containing parsed optimization parameters.
+
+    Raises:
+        Exception: If optimization_parameters section is missing from the configuration dict.
     """
     if "optimization_parameters" not in config_dict:
         raise Exception("Missing optimization_parameters section in the configuration dict")
@@ -121,23 +116,19 @@ def create_genetic_optimizer_from_config(
     config_dict: dict, exp_config: ExperimentConfig, surrogate_models: dict, optimizer_checkpoint: OptimizerCheckpoint
 ):
     """
-    Create a GeneticOptimizer from a configuration dictionary
+    Create a GeneticOptimizer from a configuration dictionary.
 
-    Parameters
-    ----------
-    config_dict : dict
-        Configuration dictionary
-    exp_config : ExperimentConfig
-        Experiment configuration
-    surrogate_models : dict
-        Dictionary of surrogate models for each objective
-    optimizer_checkpoint : OptimizerCheckpoint
-        Checkpoint manager for optimization state
+    Args:
+        config_dict (dict): Configuration dictionary.
+        exp_config (ExperimentConfig): Experiment configuration.
+        surrogate_models (dict): Dictionary of surrogate models for each objective.
+        optimizer_checkpoint (OptimizerCheckpoint): Checkpoint manager for optimization state.
 
-    Returns
-    -------
-    GeneticOptimizer
-        Configured genetic optimizer instance
+    Returns:
+        GeneticOptimizer: Configured genetic optimizer instance.
+
+    Raises:
+        Exception: If optimization method is not 'genetic' or if coefficient is set for undefined objective.
     """
     optim_section = config_dict["OPTIMIZATION"]
     optimization_method = optim_section["optimization_method"]
@@ -200,25 +191,24 @@ class DesignParametersProblem(Problem):
     """
     Custom pymoo problem that uses the models generated in the modeling phase to estimate
     the objective values for a set of design parameters. Those objectives are used to evaluate a
-    population of models to find the best parameters for a given kernel inputs
+    population of models to find the best parameters for a given kernel inputs.
     """
 
-    def __init__(self, *, objectives: list, parameters: dict, input_names: list, models: dict, model_type: str = "lightgbm"):
+    def __init__(
+        self, *, objectives: list, parameters: dict, input_names: list, surrogate_models: dict, model_type: str = "lightgbm"
+    ):
         """
         Initialize the DesignParametersProblem.
 
-        Parameters
-        ----------
-        objectives : list
-            List of objective names to optimize.
-        parameters : dict
-            Dictionary mapping parameter names to their parameter value objects.
-        input_names : list
-            List of input parameter names that are fixed during optimization.
-        models : dict
-            Dictionary of surrogate models for each objective.
-        model_type : str, optional
-            The type of model to use, by default "lightgbm".
+        Args:
+            objectives (list): List of objective names to optimize.
+            parameters (dict): Dictionary mapping parameter names to their parameter value objects.
+            input_names (list): List of input parameter names that are fixed during optimization.
+            surrogate_models (dict): Dictionary of surrogate models for each objective.
+            model_type (str): The type of model to use. Defaults to "lightgbm".
+
+        Raises:
+            ValueError: If more than 2 objectives are provided (only 1D and 2D optimization problems are currently supported).
         """
 
         # Kernels inputs will be defined later on
@@ -228,7 +218,7 @@ class DesignParametersProblem(Problem):
         self.objectives = objectives
         self.parameters = parameters
         self.input_names = input_names
-        self.surrogate_models = models
+        self.surrogate_models = surrogate_models
         self.model_type = model_type
 
         # Extract the name and type of the optimization feature
@@ -245,6 +235,15 @@ class DesignParametersProblem(Problem):
         super().__init__(vars=mixed_vars, n_obj=self.objectives_count)
 
     def _define_vars(self):
+        """
+        Define the variables for the mixed precision optimization problem.
+
+        Returns:
+            dict: Dictionary mapping variable names to their pymoo variable definitions.
+
+        Raises:
+            ValueError: If an unexpected variable type is encountered.
+        """
         # To define a mixed precision problem, we need to define each
         # variable, and their respective bound
         parameters = self.parameters
@@ -268,7 +267,11 @@ class DesignParametersProblem(Problem):
 
     def set_kernel_input(self, kernel_inputs):
         """
-        Set the input coordinate for the problem, to which the design parameters will be applied
+        Set the input coordinate for the problem, to which the design parameters will be applied.
+
+        Args:
+            kernel_inputs (pd.DataFrame | pd.Series | dict): The input coordinates that will be used
+                to build the model input. Can be a DataFrame, Series, or dictionary.
         """
         self.kernel_inputs = kernel_inputs
         if isinstance(self.kernel_inputs, pd.DataFrame):
@@ -280,6 +283,16 @@ class DesignParametersProblem(Problem):
             self.input_columns = None
 
     def _build_model_input(self, x):
+        """
+        Build model input by combining design parameters with kernel inputs.
+
+        Args:
+            x (numpy.ndarray): Array of design parameter values from the optimizer.
+
+        Returns:
+            pd.DataFrame: Combined DataFrame containing both design parameters and
+                kernel inputs, tiled to match the number of samples.
+        """
         # Pymoo returns a ndarray of dict
         # We must convert it to a simple list for pandas to automatically builds the DataFrame
         x = list(x)
@@ -297,18 +310,14 @@ class DesignParametersProblem(Problem):
 
     def _evaluate(self, x, out, *args, **kwargs):
         """
-        Evaluate the objectives of the given population
+        Evaluate the objectives of the given population.
 
-        Parameters
-
-        x:
-            a 2D array of shape (n_features, n_samples)
-        out:
-            The evaluation of each objective for every sample
-        args:
-            Extra arguments, unused in this implementation
-        kwargs:
-            Extra keyword arguments, unused in this implementation
+        Args:
+            x (numpy.ndarray): A 2D array of shape (n_features, n_samples) containing
+                the design parameter values for each sample.
+            out (dict): Dictionary to store the evaluation results for each objective.
+            *args: Extra positional arguments, unused in this implementation.
+            **kwargs: Extra keyword arguments, unused in this implementation.
         """
 
         # Ensure the user has set the kernel inputs
@@ -349,8 +358,7 @@ class _GeneticOptimizationMethod:
 
 class _NormalizedOptimizationMethod(_GeneticOptimizationMethod):
     """
-    Optimization method that uses a normalized weighted sum of the objectives to select the
-    best solution
+    Optimization method that uses a normalized weighted sum of the objectives to select the best solution.
     """
 
     def __init__(
@@ -367,22 +375,15 @@ class _NormalizedOptimizationMethod(_GeneticOptimizationMethod):
         """
         Initialize the normalized optimization method.
 
-        Parameters
-        ----------
-        objectives : list
-            List of objective function names
-        parameters : dict
-            Dictionary of parameter values for sampling
-        input_names : list
-            List of input parameter names
-        optimization_parameters : dict
-            Additional optimization parameters
-        termination_criterion : Any
-            Termination criterion for optimization
-        normalization_coefficients : dict
-            Dictionary mapping objective names to their normalization coefficients
-        surrogate_models : dict
-            Dictionary of surrogate models for each objective
+        Args:
+            objectives (list): List of objective function names.
+            parameters (dict): Dictionary of parameter values for sampling.
+            input_names (list): List of input parameter names.
+            optimization_parameters (dict): Additional optimization parameters.
+            termination_criterion: Termination criterion for optimization.
+            normalization_coefficients (dict): Dictionary mapping objective names to their
+                normalization coefficients.
+            surrogate_models (dict): Dictionary of surrogate models for each objective.
         """
         self.objectives = objectives
         self.parameters = parameters
@@ -394,26 +395,18 @@ class _NormalizedOptimizationMethod(_GeneticOptimizationMethod):
 
     def _normalized_selection(self, raw_parameters, raw_objectives):
         """
-        Parse a list of results and select the one with the best normalized weighted sum,
-         where the weights correspond to user-defined coefficients for each objective
+        Parse a list of results and select the one with the best normalized weighted sum.
 
-        Parameters
-        ----------
-        raw_parameters:
-            A list of encoded kernel design parameters
+        The weights correspond to user-defined coefficients for each objective.
 
-        raw_objectives:
-            A list of corresponding objective values
-            The optimal design parameters and corresponding objective values
+        Args:
+            raw_parameters: A list of encoded kernel design parameters.
+            raw_objectives: A list of corresponding objective values.
 
-        Returns
-        -------
-        tuple:
-            optimal_parameters
-                The optimal design parameters
-
-            optimal_values
-                The corresponding objective values
+        Returns:
+            tuple: A tuple containing:
+                - optimal_parameters: The optimal design parameters.
+                - optimal_values: The corresponding objective values.
         """
 
         # FIXME: We should generalize this to any number of objectives
@@ -456,20 +449,15 @@ class _NormalizedOptimizationMethod(_GeneticOptimizationMethod):
 
     def _run_nsga2(self, problem) -> pymoo.core.result.Result:
         """
-        Run the NSGA2 algorithm on the given problem,
-        extracting required parameters from the configuration
+        Run the NSGA2 algorithm on the given problem.
 
-        Parameters
-        ----------
+        Extracts required parameters from the configuration.
 
-        problem:
-            The problem to run the algorithm on
+        Args:
+            problem: The problem to run the algorithm on.
 
-        Returns
-        --------
-
-        pymoo.core.result.Result:
-            The return value of the NSGA2 algorithm
+        Returns:
+            pymoo.core.result.Result: The return value of the NSGA2 algorithm.
         """
 
         # Create the algorithm object
@@ -487,22 +475,15 @@ class _NormalizedOptimizationMethod(_GeneticOptimizationMethod):
 
     def run(self, kernel_input):
         """
-        Runs the NSGA2 algorithm and selects the kernel design parameters using
-        the user-defined coefficients for each objective
+        Run the NSGA2 algorithm and select the kernel design parameters using user-defined coefficients.
 
-        Parameters
-        ----------
-        kernel_input:
-            The kernel inputs corresponding to the local sampling point
+        Args:
+            kernel_input: The kernel inputs corresponding to the local sampling point.
 
-        Returns
-        -------
-        tuple:
-            optimal_parameters:
-                The optimal design parameter
-
-            optimal_objectives_values
-                the corresponding objective values
+        Returns:
+            tuple: A tuple containing:
+                - optimal_parameters: The optimal design parameter.
+                - optimal_objectives_values: The corresponding objective values.
         """
         # FIXME: Normalized optimization can support as many as objectives as the user wants
         if len(self.objectives) != 2:
@@ -512,6 +493,7 @@ class _NormalizedOptimizationMethod(_GeneticOptimizationMethod):
             objectives=self.objectives,
             parameters=self.parameters,
             input_names=self.input_names,
+            surrogate_models=self.surrogate_models,
         )
         problem.set_kernel_input(kernel_input)
 
@@ -523,8 +505,8 @@ class _NormalizedOptimizationMethod(_GeneticOptimizationMethod):
 
 class _MonoObjectiveOptimizationMethod(_GeneticOptimizationMethod):
     """
-    An optimization method for mono-objective problem, where the best solution is selected
-    based on the minimum objective value
+    An optimization method for mono-objective problems, where the best solution is selected
+    based on the minimum objective value.
     """
 
     def __init__(
@@ -543,26 +525,16 @@ class _MonoObjectiveOptimizationMethod(_GeneticOptimizationMethod):
         """
         Initialize the mono-objective optimization method.
 
-        Parameters
-        ----------
-        objectives : list
-            List of objective function names
-        parameters : dict
-            Dictionary of parameter values for sampling
-        input_names : list
-            List of input parameter names
-        optimization_parameters : dict
-            Additional optimization parameters
-        termination_criterion : Any
-            Termination criterion for optimization
-        do_early_stopping : bool
-            Whether to enable early stopping
-        output_directory : pathlib.Path
-            Directory where output files will be saved
-        surrogate_models : dict
-            Dictionary of surrogate models for each objective
-        record_history : bool, optional
-            Whether to record optimization history, by default True
+        Args:
+            objectives (list): List of objective function names.
+            parameters (dict): Dictionary of parameter values for sampling.
+            input_names (list): List of input parameter names.
+            optimization_parameters (dict): Additional optimization parameters.
+            termination_criterion: Termination criterion for optimization.
+            do_early_stopping (bool): Whether to enable early stopping.
+            output_directory (pathlib.Path): Directory where output files will be saved.
+            surrogate_models (dict): Dictionary of surrogate models for each objective.
+            record_history (bool, optional): Whether to record optimization history. Defaults to True.
         """
         self.objectives = objectives
         self.parameters = parameters
@@ -581,14 +553,16 @@ class _MonoObjectiveOptimizationMethod(_GeneticOptimizationMethod):
             self.termination = termination_criterion
 
     def _build_early_stopping_criterion(self, surrogate_models) -> RobustTermination:
-        """Build a stopping criterion with an heuristic for the convergence threshold
+        """
+        Build a stopping criterion with a heuristic for the convergence threshold.
 
-        Execute 10k random solutions, and take a fraction of the minimum value as a threshold
+        Executes 10k random solutions and takes a fraction of the minimum value as a threshold.
 
-        :param surrogate_models: The models to compute the threshold with
-        :type surrogate_models: dict
-        :return: A convergence stopping criterion
-        :rtype: RobustTermination
+        Args:
+            surrogate_models (dict): The models to compute the threshold with.
+
+        Returns:
+            RobustTermination: A convergence stopping criterion.
         """
 
         begin = time.time()
@@ -616,20 +590,15 @@ class _MonoObjectiveOptimizationMethod(_GeneticOptimizationMethod):
 
     def run(self, kernel_input: pd.Series):
         """
-        Optimized kernel optimization for single objective experiments
+        Optimized kernel optimization for single objective experiments.
 
-        Parameters
-        ----------
-        kernel_input:
-            The kernel inputs corresponding to the local sampling point
+        Args:
+            kernel_input (pd.Series): The kernel inputs corresponding to the local sampling point.
 
-        Returns
-        -------
-        tuple:
-            X:
-                The optimal design parameters
-            F:
-                The corresponding objective values
+        Returns:
+            tuple: A tuple containing:
+                - X: The optimal design parameters.
+                - F: The corresponding objective values.
         """
 
         if len(self.objectives) != 1:
@@ -639,6 +608,7 @@ class _MonoObjectiveOptimizationMethod(_GeneticOptimizationMethod):
             objectives=self.objectives,
             parameters=self.parameters,
             input_names=self.input_names,
+            surrogate_models=self.surrogate_models,
         )
         problem.set_kernel_input(kernel_input)
 
@@ -661,6 +631,13 @@ class _MonoObjectiveOptimizationMethod(_GeneticOptimizationMethod):
         return best_configuration, res.F[optimal_index]
 
     def _record_history(self, ga_res, kernel_input):
+        """
+        Record the optimization history for convergence analysis.
+
+        Args:
+            ga_res: The genetic algorithm result object containing the optimization history.
+            kernel_input: The kernel input parameters for the current optimization run.
+        """
         history = ga_res.history
 
         dbs = []
@@ -693,8 +670,8 @@ class _MonoObjectiveOptimizationMethod(_GeneticOptimizationMethod):
 
 class GeneticOptimizer(object):
     """
-    A genetic optimizer, that create a list of samples inside the sampling space and
-    find the local optimal design parameters, gathered as a dataframe.
+    A genetic optimizer that creates a list of samples inside the sampling space and finds the
+    local optimal design parameters, gathered as a dataframe.
     """
 
     def __init__(
@@ -715,37 +692,24 @@ class GeneticOptimizer(object):
         optimizer_checkpoint: OptimizerCheckpoint,
     ):
         """
-        Construct a new genetic optimizer with explicit parameters
+        Construct a new genetic optimizer with explicit parameters.
 
-        Parameters
-        ----------
-        objectives : list
-            List of objective function names
-        parameters : dict
-            Dictionary of parameter values for sampling
-        input_names : list
-            List of input parameter names
-        optimization_parameters : dict
-            Additional optimization parameters
-        termination_criterion : Any
-            Termination criterion for optimization
-        normalization_coefficients : dict
-            Dictionary mapping objective names to their normalization coefficients
-        selection_method : str
-            Selection method for optimization
-        do_early_stopping : bool
-            Whether to enable early stopping
-        output_directory : pathlib.Path
-            Directory where output files will be saved
-        sampler : Sampler
-            The sampler to use to generate the optimization points
-        samples_count : int
-            The number of optimization points to generate
-        surrogate_models : dict
-            A dict of surrogates for each objective in the experiment, defined as
-            {objective_name: surrogate_model}
-        optimizer_checkpoint : OptimizerCheckpoint
-            Checkpoint manager for optimization state
+        Args:
+            objectives (list): List of objective function names.
+            parameters (dict): Dictionary of parameter values for sampling.
+            input_names (list): List of input parameter names.
+            optimization_parameters (dict): Additional optimization parameters.
+            termination_criterion: Termination criterion for optimization.
+            normalization_coefficients (dict): Dictionary mapping objective names to their
+                normalization coefficients.
+            selection_method (str): Selection method for optimization.
+            do_early_stopping (bool): Whether to enable early stopping.
+            output_directory (pathlib.Path): Directory where output files will be saved.
+            sampler: The sampler to use to generate the optimization points.
+            samples_count (int): The number of optimization points to generate.
+            surrogate_models (dict): A dict of surrogates for each objective in the experiment,
+                defined as {objective_name: surrogate_model}.
+            optimizer_checkpoint (OptimizerCheckpoint): Checkpoint manager for optimization state.
         """
         self.objectives = objectives
         self.parameters = parameters
@@ -764,12 +728,10 @@ class GeneticOptimizer(object):
 
     def _make_optimization_method(self):
         """
-        Finds the optimization method to use for the current configuration
+        Find the optimization method to use for the current configuration.
 
-        Returns
-        -------
-        functor:
-            A functor to an optimization method
+        Returns:
+            _GeneticOptimizationMethod: An optimization method instance based on the configuration.
         """
 
         selection_method = self.selection_method
@@ -804,31 +766,35 @@ class GeneticOptimizer(object):
         optimization_method: _GeneticOptimizationMethod,
         input_features: pd.Series,
     ):
+        """
+        Optimize design parameters for a single input point.
+
+        Args:
+            optimization_method (_GeneticOptimizationMethod): The optimization method to use.
+            input_features (pd.Series): The input features for the optimization point.
+
+        Returns:
+            tuple: A tuple containing:
+                - best_design_params: The best design parameters found.
+                - objective_values: The corresponding objective values.
+        """
         best_design_params, objective_values = optimization_method.run(input_features)
         return best_design_params, objective_values
 
     def _optimize_all_samples(self, optimization_method, optimization_points: pd.DataFrame):
         """
         Iterate over all the given samples, and find the best design parameters for each sample.
-        Results are returned as a DataFrame
 
-        Parameters
-        ----------
-        optimization_method:
-            The function to use to find the best design parameters for each
-            sample.
+        Results are returned as a DataFrame.
 
-        optimization_points: pd.DataFrame
-            A dataframe containing the samples to optimize, in the shape
-            (nb_features, nb_samples).
-        progress_bar:
-            a progress bar to display the progress.
+        Args:
+            optimization_method: The function to use to find the best design parameters for each sample.
+            optimization_points (pd.DataFrame): A dataframe containing the samples to optimize,
+                in the shape (nb_features, nb_samples).
 
-        Returns
-        -------
-        pd.DataFrame:
-            A dataframe containing the results of the optimization, in the shape (nb_features,
-            nb_samples).
+        Returns:
+            pd.DataFrame: A dataframe containing the results of the optimization, in the shape
+                (nb_features, nb_samples).
         """
 
         # if we have saved results, load them and reduce the number of optimization points to process.
@@ -858,6 +824,12 @@ class GeneticOptimizer(object):
         return results
 
     def _optimize(self):
+        """
+        Run the optimization process on all sampled points.
+
+        Returns:
+            pd.DataFrame: Encoded DataFrame containing the best design parameters for each sample.
+        """
 
         # First define the optimization points
         samples = self.sampler.sample(self.samples_count)
@@ -874,14 +846,13 @@ class GeneticOptimizer(object):
 
     def run(self):
         """
-        Generate a grid of samples for the kernel inputs, and find the best parameters
-        of every sample. Further down, those parameters can be clustered to form a map of the best
-        design parameters for each kernel input.
+        Generate a grid of samples for the kernel inputs, and find the best parameters of every sample.
 
-        Returns
-        -------
-        pd.DataFrame:
-            A dataframe with the best design parameters for each kernel input.
+        Further down, those parameters can be clustered to form a map of the best design parameters
+        for each kernel input.
+
+        Returns:
+            pd.DataFrame: A dataframe with the best design parameters for each kernel input.
         """
 
         results = self._optimize()

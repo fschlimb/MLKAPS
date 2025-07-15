@@ -21,11 +21,13 @@ from mlkaps.sampling.experiment import Objective
 
 
 class ModelingError(Exception):
+    """Exception raised for errors in the modeling process."""
+
     pass
 
 
 class SurrogateFactory:
-    """Factory class to easily builds surrogate models according to the configuration"""
+    """Factory class to easily build surrogate models according to the configuration."""
 
     def __init__(
         self,
@@ -40,29 +42,21 @@ class SurrogateFactory:
         n_trials: int = None,
         record: bool = True,
     ):
-        """
-        Initialize the SurrogateFactory.
+        """Initialize the SurrogateFactory.
 
-        Parameters
-        ----------
-        sampled_data : pd.DataFrame
-            The training data for the surrogate models
-        parameters : dict
-            Dictionary mapping parameter names to their parameter value objects
-        modeling_method : str, optional
-            The modeling method to use (e.g., 'lightgbm', 'xgboost', 'optuna')
-        output_directory : pathlib.Path, optional
-            Directory for saving optuna recordings and model outputs
-        model_parameters : dict, optional
-            Parameters to pass to the model constructor
-        model_name : str, optional
-            Name of the model to use (for optuna tuning)
-        time_budget : int, optional
-            Time budget in seconds for optuna tuning
-        n_trials : int, optional
-            Number of trials for optuna tuning
-        record : bool, optional
-            Whether to record optuna tuning sessions (default: True)
+        Args:
+            sampled_data (pd.DataFrame): The training data for the surrogate models.
+            parameters (dict): Dictionary mapping parameter names to their parameter value objects.
+            modeling_method (str, optional): The modeling method to use (e.g., 'lightgbm', 'xgboost', 'optuna').
+            output_directory (pathlib.Path, optional): Directory for saving optuna recordings and model outputs.
+            model_parameters (dict, optional): Parameters to pass to the model constructor.
+            model_name (str, optional): Name of the model to use (for optuna tuning).
+            time_budget (int, optional): Time budget in seconds for optuna tuning.
+            n_trials (int, optional): Number of trials for optuna tuning.
+            record (bool, optional): Whether to record optuna tuning sessions. Defaults to True.
+
+        Raises:
+            ValueError: If parameters dict is None.
         """
 
         # Validate required parameters
@@ -82,13 +76,20 @@ class SurrogateFactory:
         self.sampled_data = encode_dataframe(parameters, sampled_data)
 
     def _build_optuna_tuner(self, X: pd.DataFrame, y: Iterable):
-        """Build an optuna tuner according to the passed configuration
+        """Build an optuna tuner according to the passed configuration.
 
-        :param X: The input of the model
-        :type X: pd.DataFrame
-        :param y: The target/objective of the model
-        :type y: Iterable
-        :raises ModelingError: Raised if no tuner could be find for the  model type specified in the configuration
+        Args:
+            X (pd.DataFrame): The input of the model.
+            y (Iterable): The target/objective of the model.
+
+        Returns:
+            tuple: A tuple containing:
+                - tuner: The optuna tuner instance.
+                - time_budget (int): Time budget for tuning.
+                - n_trials (int): Number of trials for tuning.
+
+        Raises:
+            ModelingError: If no tuner could be found for the model type specified in the configuration.
         """
 
         # First try fetch the correct tuner
@@ -116,14 +117,14 @@ class SurrogateFactory:
         return tuner, time_budget, n_trials
 
     def _build_model_using_optuna(self, X: pd.DataFrame, y: Iterable) -> ModelWrapper:
-        """Build a tuned model using optuna
+        """Build a tuned model using optuna.
 
-        :param X: The input of the model
-        :type X: pd.DataFrame
-        :param y: The target/objective of the model
-        :type y: Iterable
-        :return: A tuned and fitted model
-        :rtype: ModelWrapper
+        Args:
+            X (pd.DataFrame): The input of the model.
+            y (Iterable): The target/objective of the model.
+
+        Returns:
+            ModelWrapper: A tuned and fitted model.
         """
 
         tuner, time_budget, n_trials = self._build_optuna_tuner(X, y)
@@ -136,17 +137,18 @@ class SurrogateFactory:
         return model
 
     def _build_model_using_parameters(self, model_name: str, X: pd.DataFrame, y: Iterable) -> ModelWrapper:
-        """Build a model using the default hyperparameters or one present in the configuration
+        """Build a model using the default hyperparameters or one present in the configuration.
 
-        :param model_name: The name of the model to use
-        :type model_name: str
-        :param X: The input of the model
-        :type X: pd.DataFrame
-        :param y: The target/objective of the model
-        :type y: Iterable
-        :raises ModelingError: Raised if no model was found with the given name
-        :return: The fitted model
-        :rtype: ModelWrapper
+        Args:
+            model_name (str): The name of the model to use.
+            X (pd.DataFrame): The input of the model.
+            y (Iterable): The target/objective of the model.
+
+        Returns:
+            ModelWrapper: The fitted model.
+
+        Raises:
+            ModelingError: If no model was found with the given name.
         """
 
         model = ModelWrapper.known_models.get(model_name, None)
@@ -159,16 +161,15 @@ class SurrogateFactory:
         return model
 
     def build(self, objective: Objective, inputs: Iterable[str] = None, model_name: str = None) -> ModelWrapper:
-        """Build a new model for the given objective
+        """Build a new model for the given objective.
 
-        :param objective: The objective/label to fit the model on
-        :type objective: Objective
-        :param inputs: A list of features to fit the model on, defaults to None
-        :type inputs: Iterable[str], optional
-        :param model_name: The name of the model type to use, defaults to None
-        :type model_name: str, optional
-        :return: A fitted model
-        :rtype: ModelWrapper
+        Args:
+            objective (Objective): The objective/label to fit the model on.
+            inputs (Iterable[str], optional): A list of features to fit the model on. Defaults to None.
+            model_name (str, optional): The name of the model type to use. Defaults to None.
+
+        Returns:
+            ModelWrapper: A fitted model.
         """
 
         if model_name is None:
@@ -201,36 +202,22 @@ def build_main_surrogates(
     n_trials: int = None,
     record: bool = True,
 ) -> dict:
-    """
-    Factory function for building one surrogate per objective.
+    """Factory function for building one surrogate per objective.
 
-    Parameters
-    ----------
-    sampled_data : pd.DataFrame
-        The training data for the surrogate models
-    parameters : dict
-        Dictionary mapping parameter names to their parameter value objects
-    objectives : list
-        List of objective names to build surrogates for
-    modeling_method : str
-        The modeling method to use (e.g., 'lightgbm', 'xgboost', 'optuna')
-    output_directory : pathlib.Path
-        Directory for saving model outputs
-    model_parameters : dict, optional
-        Parameters to pass to the model constructor
-    model_name : str, optional
-        Name of the model to use (for optuna tuning)
-    time_budget : int, optional
-        Time budget in seconds for optuna tuning
-    n_trials : int, optional
-        Number of trials for optuna tuning
-    record : bool, optional
-        Whether to record optuna tuning sessions (default: True)
+    Args:
+        sampled_data (pd.DataFrame): The training data for the surrogate models.
+        parameters (dict): Dictionary mapping parameter names to their parameter value objects.
+        objectives (list): List of objective names to build surrogates for.
+        modeling_method (str): The modeling method to use (e.g., 'lightgbm', 'xgboost', 'optuna').
+        output_directory (pathlib.Path): Directory for saving model outputs.
+        model_parameters (dict, optional): Parameters to pass to the model constructor.
+        model_name (str, optional): Name of the model to use (for optuna tuning).
+        time_budget (int, optional): Time budget in seconds for optuna tuning.
+        n_trials (int, optional): Number of trials for optuna tuning.
+        record (bool, optional): Whether to record optuna tuning sessions. Defaults to True.
 
-    Returns
-    -------
-    dict
-        Dictionary mapping objectives names to their surrogate models
+    Returns:
+        dict: Dictionary mapping objective names to their surrogate models.
     """
     surrogate_models = {}
     factory = SurrogateFactory(

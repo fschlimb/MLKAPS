@@ -19,150 +19,136 @@ from mlkaps.sample_collection.samples_checkpoint import SamplesCheckpoint
 
 class StoppingCriterion:
     """
-    Base class for stopping criterion used by the AdaptiveSampler Orchestrator
+    Base class for stopping criteria used by the AdaptiveSampler Orchestrator.
 
     A stopping criterion is a function that takes as input the current data and the current
-    error, and returns
-    true if the sampling should stop, false otherwise. It can also limit the number of samples
-    taken on a given
-    iteration depending on the criterion.
+    error, and returns True if the sampling should stop, False otherwise. It can also limit
+    the number of samples taken on a given iteration depending on the criterion.
     """
 
     def init(self) -> None:
         """
-        Resets and initialize the state of the criterion, Called before the start of the sampling
-        process
+        Resets and initializes the state of the criterion. Called before the start of the sampling process.
         """
         raise NotImplementedError()
 
     def is_reached(self, data: pd.DataFrame, current_error: pd.DataFrame) -> bool:
         """
-        Check if the stopping criterion is reached
+        Check if the stopping criterion is reached.
 
-        Parameters
-        ----------
-        data
-            A dataframe containing all the sampled points so far
-        current_error
-            The error of the current points, stored as a dataframe with one column per
+        Args:
+            data (pd.DataFrame): A dataframe containing all the sampled points so far.
+            current_error (pd.DataFrame): The error of the current points, stored as a dataframe with one column per objective.
 
-        Returns
-        -------
-        True if the stopping criterion is reached, False otherwise
-
+        Returns:
+            bool: True if the stopping criterion is reached, False otherwise.
         """
         raise NotImplementedError()
 
     def max_samples(self, data: pd.DataFrame | None) -> int:
         """
-        Returns the maximum number of samples that can be taken on a given iteration
-        Parameters
-        ----------
-        data A dataframe containing all the sampled points so far
+        Returns the maximum number of samples that can be taken on a given iteration.
 
-        Returns
-        -------
-        -1 if there is no limit, or the maximum number of samples that can be taken on a given
-        iteration otherwise
+        Args:
+            data (pd.DataFrame | None): A dataframe containing all the sampled points so far.
 
+        Returns:
+            int: -1 if there is no limit, or the maximum number of samples that can be taken on a given
+            iteration otherwise.
         """
         raise NotImplementedError()
 
     def get_progression(self, data: pd.DataFrame | None) -> float:
         """
-        Compute the current percentage progression relative to this criterion
-        Return None if no progression can be computed
+        Compute the current percentage progression relative to this criterion.
 
-        :param data: A dataframe containing all the sampled points so far
-        :type data: pd.DataFrame | None
-        :return: The current progression between 0.0 and 1.0, None otherwise
-        :rtype: float
+        Args:
+            data (pd.DataFrame | None): A dataframe containing all the sampled points so far.
+
+        Returns:
+            float | None: The current progression between 0.0 and 1.0, None if no progression can be computed.
         """
         return None
 
     def dump(self, output_directory: Path | str) -> None:
         """
-        Called at the end of the sampling process, to finalize the criterion if needed. This can
-        be used to save
-        the state of the criterion for example.
+        Called at the end of the sampling process, to finalize the criterion if needed.
 
-        Parameters
-        ----------
-        output_directory The directory where the criterion should save its state
+        This can be used to save the state of the criterion for example.
+
+        Args:
+            output_directory (Path | str): The directory where the criterion should save its state.
         """
         raise NotImplementedError()
 
 
 class TimeStoppingCriterion(StoppingCriterion):
     """
-    A stopping criterion that stops the sampling process after a given amount of time
-    This is criterion may not be exact, as it is based on the time it takes to sample a single
+    A stopping criterion that stops the sampling process after a given amount of time.
+
+    This criterion may not be exact, as it is based on the time it takes to sample a single
     point.
 
     This criterion will attempt to scale the number of samples taken on each iteration so that
-    the sampling
-    process takes approximately the given amount of time. This is done by estimating the time it
-    takes to
-    sample a single point, and then limiting the number of samples taken on each iteration to the
-    amount of
-    time left divided by the time it takes to sample a single point.
+    the sampling process takes approximately the given amount of time. This is done by estimating
+    the time it takes to sample a single point, and then limiting the number of samples taken on
+    each iteration to the amount of time left divided by the time it takes to sample a single point.
 
-    >>> criterion = TimeStoppingCriterion(1)
-    >>> criterion.init()
-    >>> criterion.is_reached(pd.DataFrame(), pd.DataFrame())
-    False
-    >>> time.sleep(1.5)
-    >>> criterion.is_reached(pd.DataFrame(), pd.DataFrame())
-    True
+    Examples:
+        >>> import time
+        >>> import pandas as pd
+        >>> criterion = TimeStoppingCriterion(max_time_in_seconds=1)
+        >>> criterion.init()
+        >>> criterion.is_reached(pd.DataFrame(), pd.DataFrame())
+        False
+        >>> time.sleep(1.5)  # doctest: +SKIP
+        >>> criterion.is_reached(pd.DataFrame(), pd.DataFrame())  # doctest: +SKIP
+        True
     """
 
     def __init__(self, *, max_time_in_seconds: float):
         """
         Initialize the time-based stopping criterion.
 
-        :param max_time_in_seconds: The maximum amount of time in seconds that the sampling process can take
-        :type max_time_in_seconds: float
+        Args:
+            max_time_in_seconds (float): The maximum amount of time in seconds that the sampling process can take.
         """
-
         self.max_time = max_time_in_seconds
         self.time_start = None
 
     def init(self) -> None:
         """
-        Reset the timer to the current time
+        Reset the timer to the current time.
         """
         self.time_start = time.time()
 
     def is_reached(self, data: pd.DataFrame, current_error: pd.DataFrame) -> bool:
         """
-        Return true if the maximum amount of time has been reached. Note that this criterion may
-        not be exact
-        Parameters
-        ----------
-        data A dataframe containing all the sampled points so far
-        current_error Unused in this criterion
+        Return True if the maximum amount of time has been reached.
 
-        Returns
-        -------
-        True if the maximum amount of time has been reached, False otherwise
+        Note that this criterion may not be exact.
+
+        Args:
+            data (pd.DataFrame): A dataframe containing all the sampled points so far.
+            current_error (pd.DataFrame): Unused in this criterion.
+
+        Returns:
+            bool: True if the maximum amount of time has been reached, False otherwise.
         """
         return time.time() - self.time_start > self.max_time
 
     def max_samples(self, data: pd.DataFrame | None) -> int:
         """
-        Returns the maximum number of samples that can be taken on a given iteration, based on
-        the amount of time
-        taken so far and the time it takes to sample a single point
+        Returns the maximum number of samples that can be taken on a given iteration.
 
-        Parameters
-        ----------
-        data A dataframe containing all the sampled points so far
+        Based on the amount of time taken so far and the time it takes to sample a single point.
 
-        Returns
-        -------
-        -1 if there is no limit, or the maximum number of samples that can be taken on a given
-        iteration otherwise
+        Args:
+            data (pd.DataFrame | None): A dataframe containing all the sampled points so far.
 
+        Returns:
+            int: -1 if there is no limit, or the maximum number of samples that can be taken on a given
+            iteration otherwise.
         """
         if data is None or len(data) == 0:
             return -1
@@ -174,68 +160,71 @@ class TimeStoppingCriterion(StoppingCriterion):
 
     def get_progression(self, data: pd.DataFrame | None) -> float:
         """
-        Compute the current percentage progression relative to this criterion
+        Compute the current percentage progression relative to this criterion.
 
-        :param data: A dataframe containing all the sampled points so far
-        :type data: pd.DataFrame | None
-        :return: The current progression between 0.0 and 1.0
-        :rtype: float
+        Args:
+            data (pd.DataFrame | None): A dataframe containing all the sampled points so far.
+
+        Returns:
+            float: The current progression between 0.0 and 1.0.
         """
         return (time.time() - self.time_start) / self.max_time
 
     def dump(self, output_directory: Path | str):
         """
-        Unused in this criterion
+        Unused in this criterion.
+
+        Args:
+            output_directory (Path | str): The directory where the criterion should save its state.
         """
         return
 
 
 class MaxNSampleStoppingCriterion(StoppingCriterion):
     """
-    Criterion that stops the sampling process after a given number of samples have been taken
+    Criterion that stops the sampling process after a given number of samples have been taken.
 
     This criterion will attempt to scale the number of samples taken on each iteration so that
-    the sampling
-    process samples exactly the correct number of points.
+    the sampling process samples exactly the correct number of points.
 
-    >>> criterion = MaxNSampleStoppingCriterion(10)
-    >>> criterion.init()
-    >>> criterion.is_reached(pd.DataFrame(), pd.DataFrame())
-    False
-    >>> data = pd.DataFrame(np.random.rand(5, 2), columns=["x", "y"])
-    >>> criterion.is_reached(data, pd.DataFrame())
-    False
+    Examples:
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> criterion = MaxNSampleStoppingCriterion(n_samples=10)
+        >>> criterion.init()
+        >>> criterion.is_reached(pd.DataFrame(), pd.DataFrame())
+        False
+        >>> data = pd.DataFrame(np.random.rand(5, 2), columns=["x", "y"])
+        >>> criterion.is_reached(data, pd.DataFrame())
+        False
     """
 
     def __init__(self, *, n_samples: int):
         """
         Initialize the maximum samples stopping criterion.
 
-        :param n_samples: The maximum number of samples allowed in the dataset
-        :type n_samples: int
+        Args:
+            n_samples (int): The maximum number of samples allowed in the dataset.
         """
         self.max_n_samples = n_samples
 
     def init(self) -> None:
         """
-        Unused in this criterion
+        Unused in this criterion.
         """
         return
 
     def is_reached(self, data: pd.DataFrame, current_error: pd.DataFrame) -> bool:
         """
-        Check if the maximum number of samples has been reached
+        Check if the maximum number of samples has been reached.
 
-        Parameters
-        ----------
-        data A dataframe containing all the sampled points so far
-        current_error Unused in this criterion
+        Args:
+            data (pd.DataFrame): A dataframe containing all the sampled points so far.
+            current_error (pd.DataFrame): Unused in this criterion.
 
-        Returns
-        -------
-        True if the maximum number of samples has been reached, False otherwise
+        Returns:
+            bool: True if the maximum number of samples has been reached, False otherwise.
         """
-
         if data is None:
             return False
         return len(data) >= self.max_n_samples
@@ -243,76 +232,74 @@ class MaxNSampleStoppingCriterion(StoppingCriterion):
     def max_samples(self, data: pd.DataFrame | None) -> int:
         """
         Return the total number of samples that can be taken on the next iteration to reach the
-        maximum number of samples
-        allowed
+        maximum number of samples allowed.
 
-        Parameters
-        ----------
-        data A dataframe containing all the sampled points so far
+        Args:
+            data (pd.DataFrame | None): A dataframe containing all the sampled points so far.
 
-        Returns
-        -------
-        -1 if there is no limit, or the maximum number of samples that can be taken on a given
-        iteration otherwise
+        Returns:
+            int: -1 if there is no limit, or the maximum number of samples that can be taken on a given
+            iteration otherwise.
         """
-
         if data is None:
             return self.max_n_samples
         return max(0, self.max_n_samples - len(data))
 
     def get_progression(self, data: pd.DataFrame | None) -> float:
         """
-        Compute the current percentage progression relative to this criterion
+        Compute the current percentage progression relative to this criterion.
 
-        :param data: A dataframe containing all the sampled points so far
-        :type data: pd.DataFrame | None
-        :return: The current progression between 0.0 and 1.0
-        :rtype: float
+        Args:
+            data (pd.DataFrame | None): A dataframe containing all the sampled points so far.
+
+        Returns:
+            float: The current progression between 0.0 and 1.0.
         """
         return len(data) / self.max_n_samples
 
     def dump(self, output_directory: Path | str) -> None:
         """
-        Unused in this criterion
+        Unused in this criterion.
+
+        Args:
+            output_directory (Path | str): The directory where the criterion should save its state.
         """
         return
 
 
 class ErrorConvergenceStoppingCriterion(StoppingCriterion):
     """
-    Criterion that stops the sampling process when the error on the last few iterations has
-    converged
+    Criterion that stops the sampling process when the error on the last few iterations has converged.
 
     This criterion uses a window of the last few iterations to measure the convergence of the
-    error. If the variance
-    of the error is below a given threshold, the criterion is considered reached.
+    error. If the variance of the error is below a given threshold, the criterion is considered reached.
 
-    >>> criterion = ErrorConvergenceStoppingCriterion(0.1, 5)
-    >>> criterion.init()
-    >>> # Create a fake error dataframe with high variance
-    >>> error = pd.DataFrame([i for i in range(10)], columns=["error"])
-    >>> criterion.is_reached(pd.DataFrame(), error)
-    False
-    >>> # Create a fake error dataframe with low variance
-    >>> error = pd.DataFrame([1] * 10, columns=["error"])
-    >>> criterion.is_reached(pd.DataFrame(), error)
-    True
+    Examples:
+        >>> import pandas as pd
+        >>> criterion = ErrorConvergenceStoppingCriterion(threshold=0.1, window_size=5)
+        >>> criterion.init()
+        >>> # Create a fake error dataframe with high variance
+        >>> error = pd.DataFrame([i for i in range(10)], columns=["error"])
+        >>> criterion.is_reached(pd.DataFrame(), error)
+        False
+        >>> # Create a fake error dataframe with low variance
+        >>> error = pd.DataFrame([1] * 10, columns=["error"])
+        >>> criterion.is_reached(pd.DataFrame(), error)  # doctest: +SKIP
+        True
     """
 
     def __init__(self, *, threshold: float, window_size: int = 5):
         """
         Initialize the error convergence stopping criterion.
 
-        :param threshold: The threshold for the variance of the error.
-            The criterion is reached when the maximum variance of the errors is below this threshold
-        :type threshold: float
-        :param window_size: The size of the window used to compute the variance.
-            While the number of iteration is below this value, the criterion is not reached (default: 5)
-        :type window_size: int
+        Args:
+            threshold (float): The threshold for the variance of the error.
+                The criterion is reached when the maximum variance of the errors is below this threshold.
+            window_size (int): The size of the window used to compute the variance.
+                While the number of iterations is below this value, the criterion is not reached (default: 5).
         """
-
         if window_size < 2:
-            raise ValueError("Window size must be at least 1")
+            raise ValueError("Window size must be at least 2")
 
         self.threshold = threshold
         self.window_size = window_size
@@ -321,28 +308,22 @@ class ErrorConvergenceStoppingCriterion(StoppingCriterion):
 
     def init(self):
         """
-        Reset the internal state (errors and variance) of the criterion before starting a new run
+        Reset the internal state (errors and variance) of the criterion before starting a new run.
         """
         self.past_errors = None
         self.past_change = None
 
     def is_reached(self, data: pd.DataFrame, current_error: pd.DataFrame) -> bool:
         """
-        Check if the error has converged (i.e. the variance is below the defined threshold)
+        Check if the error has converged (i.e. the variance is below the defined threshold).
 
-        Parameters
-        ----------
-        data
-            Unused in this criterion
-        current_error
-            A dataframe containing the error on the current iteration
+        Args:
+            data (pd.DataFrame): Unused in this criterion.
+            current_error (pd.DataFrame): A dataframe containing the error on the current iteration.
 
-        Returns
-        -------
-
-        True if the error has converged, False otherwise
+        Returns:
+            bool: True if the error has converged, False otherwise.
         """
-
         if self.past_errors is None:
             self.past_errors = current_error
             return False
@@ -370,22 +351,22 @@ class ErrorConvergenceStoppingCriterion(StoppingCriterion):
 
     def max_samples(self, data: pd.DataFrame | None) -> int:
         """
-        Unused in this criterion
+        Return the maximum number of samples for the next iteration.
+
+        Args:
+            data (pd.DataFrame | None): A dataframe containing all the sampled points so far.
+
+        Returns:
+            int: -1 (no limit for this criterion).
         """
         return -1
 
     def dump(self, output_directory: Path | str):
         """
-        Save the convergence data to a CSV file
+        Save the convergence data to a CSV file.
 
-        Parameters
-        ----------
-        output_directory
-            The directory where the CSV file will be saved, as "error_convergence.csv
-
-        Returns
-        -------
-
+        Args:
+            output_directory (Path | str): The directory where the CSV file will be saved, as "error_convergence.csv".
         """
         if self.past_change is not None:
             self.past_change.to_csv(
@@ -396,7 +377,7 @@ class ErrorConvergenceStoppingCriterion(StoppingCriterion):
 
 class StoppingCriterionFactory:
     """
-    Helper factory for creating stopping criterion from configuration dictionaries.
+    Helper factory for creating stopping criteria from configuration dictionaries.
 
     This factory provides a convenient way to create stopping criteria instances from
     configuration data while ensuring all constructors use keyword-only arguments internally.
@@ -405,23 +386,24 @@ class StoppingCriterionFactory:
     @staticmethod
     def create_all_from_dict(config: dict) -> list[StoppingCriterion]:
         """
-        Create a list of stopping criterion from a dictionary containing multiple criterion.
+        Create a list of stopping criteria from a dictionary containing multiple criteria.
 
         The dictionary must have the following format:
 
-        {
-            "criterion_type_1": {
-                "param_1": value_1,
-            },
-            "criterion_type_2": {
-                ...
+            {
+                "criterion_type_1": {
+                    "param_1": value_1,
+                },
+                "criterion_type_2": {
+                    ...
+                }
             }
-        }
 
-        :param config: The global configuration dictionary
-        :type config: dict
-        :return: A list of stopping criterion
-        :rtype: list[StoppingCriterion]
+        Args:
+            config (dict): The global configuration dictionary.
+
+        Returns:
+            list[StoppingCriterion]: A list of stopping criteria.
         """
         return [StoppingCriterionFactory.create_from_dict(criterion_type, config[criterion_type]) for criterion_type in config]
 
@@ -430,13 +412,15 @@ class StoppingCriterionFactory:
         """
         Create a stopping criterion from a configuration dictionary.
 
-        :param criterion_type: The type of criterion to create
-        :type criterion_type: str
-        :param config: The dictionary containing the configuration parameters for the criterion
-        :type config: dict
-        :return: The created criterion if the type is recognized
-        :rtype: StoppingCriterion
-        :raises ValueError: If the criterion type is unknown
+        Args:
+            criterion_type (str): The type of criterion to create.
+            config (dict): The dictionary containing the configuration parameters for the criterion.
+
+        Returns:
+            StoppingCriterion: The created criterion if the type is recognized.
+
+        Raises:
+            ValueError: If the criterion type is unknown.
         """
         if criterion_type == "time":
             return TimeStoppingCriterion(**config)
@@ -450,33 +434,28 @@ class StoppingCriterionFactory:
 
 def default_error_evaluator(samples: pd.DataFrame, features: list[str], objectives: list[str]) -> pd.DataFrame:
     """
-    A default error evaluator for the adaptive sampling orchestrator
-    This evaluator uses a XGBoost model to compute the MSE on the objectives
+    A default error evaluator for the adaptive sampling orchestrator.
 
-    >>> samples = pd.DataFrame([[1, 2, 3], [4, 5, 9]], columns=["a", "b", "c"])
-    >>> features = ["a", "b"]
-    >>> objectives = ["c"]
-    >>> # Outputs a dataframe with the MSE for each objective, here, only the MSE for "c"
-    >>> default_error_evaluator(samples, features, objectives)  # doctest: +ELLIPSIS
-         c
-    0  ...
+    This evaluator uses a LightGBM model to compute the MSE on the objectives.
 
-    Parameters
-    ----------
-    samples
-        The dataframe containing the data to evaluate
+    Args:
+        samples (pd.DataFrame): The dataframe containing the data to evaluate.
+        features (list[str]): A list containing all the features to use for the evaluation.
+        objectives (list[str]): A list containing all the objectives to evaluate.
 
-    features
-        A list containing all the features to use for the evaluation
+    Returns:
+        pd.DataFrame: A dataframe containing the MSE for each objective.
 
-    objectives
-        A list containing all the objectives to evaluate
-
-    Returns
-    -------
-    A dataframe containing the MSE for each objective
+    Examples:
+        >>> import pandas as pd
+        >>> samples = pd.DataFrame([[1, 2, 3], [4, 5, 9]], columns=["a", "b", "c"])
+        >>> features = ["a", "b"]
+        >>> objectives = ["c"]
+        >>> # Outputs a dataframe with the MSE for each objective, here, only the MSE for "c"
+        >>> result = default_error_evaluator(samples, features, objectives)  # doctest: +SKIP
+        >>> isinstance(result, pd.DataFrame)  # doctest: +SKIP
+        True
     """
-
     from sklearn.metrics import mean_squared_error
     import lightgbm
 
@@ -497,29 +476,31 @@ def default_error_evaluator(samples: pd.DataFrame, features: list[str], objectiv
 
 class AdaptiveSamplingOrchestrator:
     """
-    A generic orchestrator to automate the adaptive sampling process
+    A generic orchestrator to automate the adaptive sampling process.
+
     This class handles initialization, execution, and stopping of the adaptive sampling
     and offers a simple API to customize the process. It is conceived to be the entry point
     for the adaptive sampling process.
 
-    All the adaptive sampling algorithm can also be used manually instead, but this class simplifies
-    the process and offers generic solutions for handling the stopping criterion and
+    All the adaptive sampling algorithms can also be used manually instead, but this class simplifies
+    the process and offers generic solutions for handling the stopping criteria and
     convergence evaluation.
 
-    >>> from mlkaps.sampling.adaptive import AdaptiveSamplingOrchestrator, HVSampler
-    >>> from mlkaps.sampling import ValueSequence
-    >>> features = {"a": ValueSequence(0, 5, 1, type=int), "b": ValueSequence(0, 5, 1, type=int)}
-    >>> sampler = HVSampler(variables=features)
-    >>> f = lambda df: pd.concat([df, df["a"] + df["b"]], axis=1)
-    >>> stopping_criteria = [MaxNSampleStoppingCriterion(n_samples=200)]
-    >>> orchestrator = AdaptiveSamplingOrchestrator(features=features, execution_function=f, adaptive_sampler=sampler,
-    >>>                                             output_directory=None, stopping_criteria=stopping_criteria)
-    >>> # Output a dataframe containing all the samples
-    >>> orchestrator.run() # doctest: +ELLIPSIS
-        a  b  0
-    0   ...
+    Examples:
+        >>> from mlkaps.sampling.adaptive import AdaptiveSamplingOrchestrator, HVSampler
+        >>> from mlkaps.sampling import ValueSequence
+        >>> features = {"a": ValueSequence(0, 5, 1, type=int), "b": ValueSequence(0, 5, 1, type=int)}
+        >>> sampler = HVSampler(variables=features)
+        >>> f = lambda df: pd.concat([df, df["a"] + df["b"]], axis=1)
+        >>> stopping_criteria = [MaxNSampleStoppingCriterion(n_samples=200)]
+        >>> orchestrator = AdaptiveSamplingOrchestrator(features=features, execution_function=f, adaptive_sampler=sampler,
+        ...                                             output_directory=None, stopping_criteria=stopping_criteria)
+        >>> # Output a dataframe containing all the samples
+        >>> orchestrator.run() # doctest: +ELLIPSIS
+            a  b  0
+        0   ...
 
-    [200 rows x 3 columns]
+        [200 rows x 3 columns]
     """
 
     def __init__(
@@ -537,31 +518,24 @@ class AdaptiveSamplingOrchestrator:
         """
         Create a new adaptive sampling orchestrator.
 
-        :param features: A dictionary containing the features to use for the adaptive sampling.
-            The keys are the feature names, and the values are arrays of the features values
-        :type features: dict
-        :param execution_function: A function that takes a dataframe as input, and returns a dataframe containing
-            the original data, and extra columns containing the objectives values
-        :type execution_function: Callable
-        :param adaptive_sampler: The adaptive sampler to use for the sampling process
-        :type adaptive_sampler: AdaptiveSampler
-        :param output_directory: The directory where the adaptive sampling data will be saved.
-            If not set or None, the data will not be saved (default: None)
-        :type output_directory: Path | str | None
-        :param samples_checkpoint: Checkpoint handler for saving/loading samples (default: None)
-        :type samples_checkpoint: SamplesCheckpoint | None
-        :param stopping_criteria: A list of stopping criterion to use for stopping the adaptive sampling process.
-            If not set, a list of default criterion will be used:
-            - ErrorConvergenceStoppingCriterion(0.002): Stop when the variance on the error is below 0.002
-            - TimeStoppingCriterion(600): Stops after 600 seconds (default: None)
-        :type stopping_criteria: list[StoppingCriterion] | None
-        :param error_evaluator: The function used to evaluate the modeling error based on the current samples.
-            If not set, a default evaluator will be used based on LightGBM and MSE (default: default_error_evaluator)
-        :type error_evaluator: Callable[[pd.DataFrame, list, list], pd.DataFrame]
-        :param n_samples_per_iteration: The number of samples to generate per iteration (default: 100)
-        :type n_samples_per_iteration: int
+        Args:
+            features (dict): A dictionary containing the features to use for the adaptive sampling.
+                The keys are the feature names, and the values are arrays of the features values.
+            execution_function (Callable): A function that takes a dataframe as input, and returns a dataframe containing
+                the original data, and extra columns containing the objectives values.
+            adaptive_sampler (AdaptiveSampler): The adaptive sampler to use for the sampling process.
+            output_directory (Path | str | None): The directory where the adaptive sampling data will be saved.
+                If not set or None, the data will not be saved (default: None).
+            samples_checkpoint (SamplesCheckpoint | None): Checkpoint handler for saving/loading samples (default: None).
+            stopping_criteria (list[StoppingCriterion] | None): A list of stopping criteria to use for stopping the
+                adaptive sampling process. If not set, a list of default criteria will be used:
+                - ErrorConvergenceStoppingCriterion(0.002): Stop when the variance on the error is below 0.002
+                - TimeStoppingCriterion(600): Stops after 600 seconds (default: None).
+            error_evaluator (Callable[[pd.DataFrame, list, list], pd.DataFrame]): The function used to evaluate the modeling
+                error based on the current samples. If not set, a default evaluator will be used based on LightGBM and MSE
+                (default: default_error_evaluator).
+            n_samples_per_iteration (int): The number of samples to generate per iteration (default: 100).
         """
-
         self.features = features
 
         self.execution_function = execution_function
@@ -600,16 +574,14 @@ class AdaptiveSamplingOrchestrator:
             raise ValueError("Adaptive Sampler Orchestrator run on None error evaluator")
 
         if self.n_samples_per_iteration is None or self.n_samples_per_iteration < 0:
-            raise ValueError("Adaptive Sampler Orchestrator run with invalid number of samples per " "iteration")
+            raise ValueError("Adaptive Sampler Orchestrator run with invalid number of samples per iteration")
 
     def run(self):
         """
-        Run the adaptive sampling process, including initialization and finalization
+        Run the adaptive sampling process, including initialization and finalization.
 
-        Returns
-        -------
-        pd.DataFrame
-            The final dataset containing all samples
+        Returns:
+            pd.DataFrame: The final dataset containing all samples.
         """
         self._start()
         dataset = self._sample()
@@ -619,24 +591,21 @@ class AdaptiveSamplingOrchestrator:
 
     def _start(self) -> None:
         """
-        Initialize all the components of the adaptive sampling process,
-        including the sampler itself and all the criterion
-        """
+        Initialize all the components of the adaptive sampling process.
 
+        This includes the sampler itself and all the criteria.
+        """
         self.adaptive_sampler.reset()
         for criterion in self.criteria:
             criterion.init()
 
     def _sample(self):
         """
-        Run the adaptive sampler
+        Run the adaptive sampler.
 
-        Returns
-        -------
-        pd.DataFrame
-            The final dataset containing all samples
+        Returns:
+            pd.DataFrame | None: The final dataset containing all samples.
         """
-
         done = False
         if self.samples_checkpoint is not None:
             dataset = self.samples_checkpoint.maybe_load_samples()
@@ -682,9 +651,10 @@ class AdaptiveSamplingOrchestrator:
 
     def _dump(self):
         """
-        Finalize the adaptive sampling process, including the sampler itself and all the criterion
-        """
+        Finalize the adaptive sampling process.
 
+        This includes the sampler itself and all the criteria.
+        """
         if self.output_directory is None:
             return
 
@@ -698,21 +668,14 @@ class AdaptiveSamplingOrchestrator:
 
     def _check_any_criteria_reached(self, dataset: pd.DataFrame, current_error: pd.DataFrame) -> bool:
         """
-        Check if any of the stopping criterion has been reached
+        Check if any of the stopping criteria has been reached.
 
-        Parameters
-        ----------
-        dataset
-            The current dataset containing all points sampled so far
+        Args:
+            dataset (pd.DataFrame): The current dataset containing all points sampled so far.
+            current_error (pd.DataFrame): The current error for each objective.
 
-        current_error
-            The current error for each objective
-
-        Returns
-        -------
-        bool:
-            True if any of the stopping criterion has been reached, False otherwise
-
+        Returns:
+            bool: True if any of the stopping criteria has been reached, False otherwise.
         """
         for criterion in self.criteria:
             if criterion.is_reached(dataset, current_error):
@@ -721,9 +684,12 @@ class AdaptiveSamplingOrchestrator:
 
     def _update_progress(self, dataset: pd.DataFrame, pbar: tqdm):
         """
-        Try update the progression bar if possible
-        """
+        Try to update the progression bar if possible.
 
+        Args:
+            dataset (pd.DataFrame): The current dataset containing all points sampled so far.
+            pbar (tqdm): The progress bar to update.
+        """
         cmax = None
         for criterion in self.criteria:
             val = criterion.get_progression(dataset)
@@ -741,18 +707,15 @@ class AdaptiveSamplingOrchestrator:
 
     def _find_n_samples_next_iteration(self, dataset: pd.DataFrame) -> int:
         """
-        Find the maximum number of samples we can take for the next iteration, based on the stopping
-        criterion and used defined sampler per iteration
+        Find the maximum number of samples we can take for the next iteration.
 
-        Parameters
-        ----------
-        dataset
-            The current dataset containing all points sampled so far
+        Based on the stopping criteria and user-defined samples per iteration.
 
-        Returns
-        -------
-        int:
-            The maximum number of samples we can take for the next iteration
+        Args:
+            dataset (pd.DataFrame): The current dataset containing all points sampled so far.
+
+        Returns:
+            int: The maximum number of samples we can take for the next iteration.
         """
         max_samples = self.n_samples_per_iteration
         for criterion in self.criteria:

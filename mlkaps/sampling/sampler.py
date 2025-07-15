@@ -4,7 +4,7 @@ Copyright (C) 2022-2024 University of Versailles Saint-Quentin-en-Yvelines
 Copyright (C) 2024-  MLKAPS contributors
 SPDX-License-Identifier: BSD-3-Clause
 
-Define the base class for all sampler
+Define the base class for all samplers.
 """
 
 import numpy as np
@@ -13,13 +13,16 @@ import math
 
 class ValueContainer:
     """Base class for value containers.
-    Value containers are used, for example, to store parameters and by samplers."""
+
+    Value containers are used, for example, to store parameters and by samplers.
+    """
 
     def __init__(self, type):
         """
-        :param type: The type of values contained (int, float, str, bool)
-        :type type: type
-        :rtype: None
+        Initialize a value container.
+
+        Args:
+            type (type): The type of values contained (int, float, str, bool).
         """
         assert type in [int, float, str, bool], f"Unknown type: {type}"
         self.type = type
@@ -27,32 +30,40 @@ class ValueContainer:
     def split(self, threshold):
         """
         Split the container into two containers.
+
         The first container contains all values less than or equal to the threshold.
         The second container contains all values greater than the threshold.
 
-        :param threshold: The threshold value for splitting
-        :type threshold: numeric
-        :rtype: tuple
+        Args:
+            threshold (float | int): The threshold value for splitting.
+
+        Returns:
+            tuple: Two containers after splitting.
         """
         raise NotImplementedError("This method should be overridden by subclasses")
 
     def sample_linear_space(self, n_samples=-1):
         """
         Return a list of n_samples many values from the container.
+
         If n_samples is greater than the number of values in the container, return all values in the container.
 
-        :param n_samples: Number of samples to return
-        :type n_samples: int
-        :rtype: list or np.ndarray
+        Args:
+            n_samples (int): Number of samples to return.
+
+        Returns:
+            list | np.ndarray: The sampled values.
         """
         raise NotImplementedError("This method should be overridden by subclasses")
 
     def is_continuous(self):
         """
         Return True if the container holds continuous data, False otherwise.
+
         Sets and Sequences for example are not continuous while a range is.
 
-        :rtype: bool
+        Returns:
+            bool: True if continuous, False otherwise.
         """
         raise NotImplementedError("This method should be overridden by subclasses")
 
@@ -60,7 +71,8 @@ class ValueContainer:
         """
         Return the size of the container.
 
-        :rtype: int or float
+        Returns:
+            int | float: The size of the container.
         """
         raise NotImplementedError("This method should be overridden by subclasses")
 
@@ -68,7 +80,8 @@ class ValueContainer:
         """
         Return the lower and upper bound of the container.
 
-        :rtype: list
+        Returns:
+            list: The lower and upper bounds as [min, max].
         """
         raise NotImplementedError("This method should be overridden by subclasses")
 
@@ -76,9 +89,11 @@ class ValueContainer:
         """
         Map the data to float values.
 
-        :param data: Data to map
-        :type data: np.ndarray or list
-        :rtype: np.ndarray
+        Args:
+            data (np.ndarray | list): Data to map.
+
+        Returns:
+            np.ndarray: The mapped numeric data.
         """
         raise NotImplementedError("This method should be overridden by subclasses")
 
@@ -86,17 +101,20 @@ class ValueContainer:
         """
         Map numeric representation to values of the container.
 
-        :param indices: Numeric indices to map from
-        :type indices: np.ndarray or list
-        :rtype: np.ndarray
+        Args:
+            indices (np.ndarray | list): Numeric indices to map from.
+
+        Returns:
+            np.ndarray: The mapped values.
         """
         raise NotImplementedError("This method should be overridden by subclasses")
 
     def get_dtype(self):
         """
-        Convert a type string to a numpy dtype
+        Convert a type string to a numpy dtype.
 
-        :rtype: str or type
+        Returns:
+            str | type: The numpy dtype corresponding to the container's type.
         """
         if self.type == int:
             return "int"
@@ -112,16 +130,18 @@ class ValueContainer:
 
 class ValueSet(ValueContainer):
     """Container for a set of values.
+
     The values in the set are not checked for anything.
-    They are assumed to be valid and of the same type."""
+    They are assumed to be valid and of the same type.
+    """
 
     def __init__(self, values, type=float):
         """
-        :param values: The set of values
-        :type values: list or np.ndarray
-        :param type: The type of values
-        :type type: type
-        :rtype: None
+        Initialize a value set.
+
+        Args:
+            values (list | np.ndarray): The set of values.
+            type (type): The type of values.
         """
         # call the parent constructor
         super().__init__(type)
@@ -130,12 +150,15 @@ class ValueSet(ValueContainer):
     def split(self, threshold):
         """
         Split the sequence into two sequences.
+
         The first sequence contains the first threshold many elements.
         The second sequence contains all values starting with index >= threshold.
 
-        :param threshold: Index at which to split
-        :type threshold: int
-        :rtype: tuple
+        Args:
+            threshold (int): Index at which to split.
+
+        Returns:
+            tuple: Two ValueSet objects after splitting.
         """
         assert threshold >= 0 and threshold <= len(self.values), "Threshold must be in the index range of the set"
         threshold = round(threshold)
@@ -143,36 +166,46 @@ class ValueSet(ValueContainer):
 
     def is_continuous(self):
         """
-        :rtype: bool
+        Check if the value set is continuous.
+
+        Returns:
+            bool: Always False since sets are discrete.
         """
         return False
 
     def get_size(self):
         """
         Return the size of the set.
+
         The size is defined by the number of elements in the set.
 
-        :rtype: int
+        Returns:
+            int: The number of elements in the set.
         """
         return len(self.values)
 
     def get_sampling_bounds(self):
         """
         Return the lower and upper bounds of the set.
+
         The bounds of sets are defined by their index space.
 
-        :rtype: list
+        Returns:
+            list: The bounds as [0, len(values) - 1].
         """
         return [0, len(self.values) - 1]
 
     def sample_linear_space(self, n_samples=-1):
         """
         Return a list of n_samples many values from the set.
+
         If n_samples is greater than the number of values in the set, return all values in the set.
 
-        :param n_samples: Number of samples to return
-        :type n_samples: int
-        :rtype: np.ndarray or None
+        Args:
+            n_samples (int): Number of samples to return.
+
+        Returns:
+            np.ndarray | None: The sampled values, or None if n_samples is 0.
         """
         if n_samples == 0:
             return None
@@ -185,12 +218,15 @@ class ValueSet(ValueContainer):
     def map_to_numeric(self, data):
         """
         Map the data to float values.
+
         The data is expected to be an array of values from the set.
         The mapping is done by creating a map of the values to their index in the set.
 
-        :param data: Data to map
-        :type data: np.ndarray or list
-        :rtype: np.ndarray
+        Args:
+            data (np.ndarray | list): Data to map.
+
+        Returns:
+            np.ndarray: The mapped numeric indices.
         """
         data = data.copy()
         feature_map = {k: j for j, k in enumerate(self.values)}
@@ -199,13 +235,16 @@ class ValueSet(ValueContainer):
     def map_from_numeric(self, indices):
         """
         Map numeric representation to values of the container.
+
         Get samples by picking the values at the given indices.
         The indices are expected to be in the range of the container.
         float indices are rounded to int. Non-numeric indices are not supported.
 
-        :param indices: Numeric indices to map from
-        :type indices: np.ndarray or list
-        :rtype: np.ndarray
+        Args:
+            indices (np.ndarray | list): Numeric indices to map from.
+
+        Returns:
+            np.ndarray: The mapped values.
         """
         indices = np.asarray(indices, dtype="float").round().astype(np.intp)
         # creating the full sequence might not be optimal for sequences; can be improved if needed
@@ -214,23 +253,22 @@ class ValueSet(ValueContainer):
 
 class ValueSequence(ValueContainer):
     """Container for a sequence of numeric values.
+
     The sequence is defined by a start, stop and progression.
     It includes the start value and excludes the stop value.
-    The progression mode can be "arithmetic" or "geometric"."""
+    The progression mode can be "arithmetic" or "geometric".
+    """
 
     def __init__(self, start, stop, progression, mode="arithmetic", type=float):
         """
-        :param start: Start value of the sequence
-        :type start: int or float
-        :param stop: Stop value of the sequence
-        :type stop: int or float
-        :param progression: Step or ratio for the sequence
-        :type progression: int or float
-        :param mode: Progression mode ("arithmetic" or "geometric")
-        :type mode: str
-        :param type: Type of the values
-        :type type: type
-        :rtype: None
+        Initialize a value sequence.
+
+        Args:
+            start (int | float): Start value of the sequence.
+            stop (int | float): Stop value of the sequence.
+            progression (int | float): Step or ratio for the sequence.
+            mode (str): Progression mode ("arithmetic" or "geometric").
+            type (type): Type of the values.
         """
         # call the parent constructor
         super().__init__(type)
@@ -246,13 +284,16 @@ class ValueSequence(ValueContainer):
 
     def split(self, threshold):
         """
-        Split the sequence into two sequences:
+        Split the sequence into two sequences.
+
         - The first sequence contains the first elements in the sequence which are < threshold.
         - The second sequence contains all trailing values >= threshold.
 
-        :param threshold: Value at which to split
-        :type threshold: int or float
-        :rtype: tuple
+        Args:
+            threshold (int | float): Value at which to split.
+
+        Returns:
+            tuple: Two ValueSequence objects after splitting.
         """
         assert (
             threshold >= self.get_sampling_bounds()[0] and threshold <= self.get_sampling_bounds()[1] + 1
@@ -264,16 +305,21 @@ class ValueSequence(ValueContainer):
 
     def is_continuous(self):
         """
-        :rtype: bool
+        Check if the value sequence is continuous.
+
+        Returns:
+            bool: Always False since sequences are discrete.
         """
         return False
 
     def get_size(self):
         """
         Return the size of the sequence.
+
         The size is defined by the number of elements in the sequence.
 
-        :rtype: int
+        Returns:
+            int: The number of elements in the sequence.
         """
         if self.mode == "arithmetic":
             return int((self.stop - self.start + self.progression - 1) // self.progression)
@@ -285,7 +331,8 @@ class ValueSequence(ValueContainer):
         """
         Return the lower and upper bounds of the sequence.
 
-        :rtype: list
+        Returns:
+            list: The bounds as [start, last].
         """
         if self.mode == "arithmetic":
             last = self.start + self.progression * (self.get_size() - 1)
@@ -296,11 +343,14 @@ class ValueSequence(ValueContainer):
     def sample_linear_space(self, n_samples=-1):
         """
         Return a list of n_samples many values from the sequence.
+
         If n_samples is greater than the number of values in the sequence, return all values in the sequence.
 
-        :param n_samples: Number of samples to return
-        :type n_samples: int
-        :rtype: np.ndarray or list or None
+        Args:
+            n_samples (int): Number of samples to return.
+
+        Returns:
+            np.ndarray | list | None: The sampled values, or None if n_samples is 0.
         """
         if n_samples == 0:
             return None
@@ -328,12 +378,15 @@ class ValueSequence(ValueContainer):
     def map_to_numeric(self, data):
         """
         Map the data to float values.
+
         The data is expected to be an array of values from the set.
         The mapping is done by creating a map of the values to their index in the set.
 
-        :param data: Data to map
-        :type data: np.ndarray or list
-        :rtype: np.ndarray
+        Args:
+            data (np.ndarray | list): Data to map.
+
+        Returns:
+            np.ndarray: The mapped numeric data.
         """
         if self.type == int:
             return np.round(data).astype("int")
@@ -342,11 +395,14 @@ class ValueSequence(ValueContainer):
     def map_from_numeric(self, data):
         """
         Map numeric representation to values of the container.
+
         "Quantize" input data to values in the sequence defined by start, stop and progression.
 
-        :param data: Numeric data to map from
-        :type data: np.ndarray or list
-        :rtype: np.ndarray
+        Args:
+            data (np.ndarray | list): Numeric data to map from.
+
+        Returns:
+            np.ndarray: The mapped sequence values.
         """
         # for each element in data, find the clostest element in the sequence defined by start, stop and progression
         if self.mode == "arithmetic":
@@ -368,21 +424,21 @@ class ValueSequence(ValueContainer):
 
 class ValueRange(ValueContainer):
     """Container for a range of values.
+
     The range is defined by a start and stop value.
-    The range is inclusive of the start value. The stop value and be either inclusive or exclusive.
-    The range is always defined by floats."""
+    The range is inclusive of the start value. The stop value can be either inclusive or exclusive.
+    The range is always defined by floats.
+    """
 
     def __init__(self, start, stop, include_high_bound=True, type=float):
         """
-        :param start: Start value of the range
-        :type start: float
-        :param stop: Stop value of the range
-        :type stop: float
-        :param include_high_bound: Whether to include the upper bound
-        :type include_high_bound: bool
-        :param type: Type of the values (should be float)
-        :type type: type
-        :rtype: None
+        Initialize a value range.
+
+        Args:
+            start (float): Start value of the range.
+            stop (float): Stop value of the range.
+            include_high_bound (bool): Whether to include the upper bound.
+            type (type): Type of the values (should be float).
         """
         # call the parent constructor
         super().__init__(type)
@@ -395,12 +451,15 @@ class ValueRange(ValueContainer):
     def split(self, threshold):
         """
         Split the range into two ranges.
+
         The first range contains all values less than or equal to the threshold.
         The second range contains all values greater than the threshold.
 
-        :param threshold: Value at which to split
-        :type threshold: float
-        :rtype: tuple
+        Args:
+            threshold (float): Value at which to split.
+
+        Returns:
+            tuple: Two ValueRange objects after splitting.
         """
         # is it ok that this will have threshold in both ranges?
         assert threshold >= self.start and threshold <= self.stop, "threshold must be within the range"
@@ -411,22 +470,30 @@ class ValueRange(ValueContainer):
 
     def is_continuous(self):
         """
-        :rtype: bool
+        Check if the value range is continuous.
+
+        Returns:
+            bool: Always True since ranges are continuous.
         """
         return True
 
     def get_size(self):
         """
         Return the size of the range.
-        The sizes is defined by the distance between the start and stop values.
 
-        :rtype: float
+        The size is defined by the distance between the start and stop values.
+
+        Returns:
+            float: The size of the range.
         """
         return self.stop - self.start
 
     def get_sampling_bounds(self):
         """
-        :rtype: list
+        Return the lower and upper bounds of the range.
+
+        Returns:
+            list: The bounds as [start, stop].
         """
         assert self.include_high_bound, "Upper bound must be inclusive"
         return [self.start, self.stop]
@@ -434,11 +501,14 @@ class ValueRange(ValueContainer):
     def sample_linear_space(self, n_samples):
         """
         Return a list of n_samples many values from the range.
+
         If n_samples is greater than the number of values in the range, return all values in the range.
 
-        :param n_samples: Number of samples to return
-        :type n_samples: int
-        :rtype: np.ndarray or list
+        Args:
+            n_samples (int): Number of samples to return.
+
+        Returns:
+            np.ndarray | list: The sampled values.
         """
         assert n_samples >= 0, "Cannot sample full continuous space, n_samples must be >= 0"
         if n_samples == 0:
@@ -452,22 +522,28 @@ class ValueRange(ValueContainer):
     def map_to_numeric(self, data):
         """
         Map the data to float values.
+
         Nothing to be done here, the data is already in the correct format.
 
-        :param data: Data to map
-        :type data: np.ndarray or list
-        :rtype: np.ndarray
+        Args:
+            data (np.ndarray | list): Data to map.
+
+        Returns:
+            np.ndarray: The mapped numeric data.
         """
         return data.astype(self.get_dtype())
 
     def map_from_numeric(self, data):
         """
         Map numeric representation to values of the container.
+
         Nothing to be done here, the data is already in the correct format.
 
-        :param data: Numeric data to map from
-        :type data: np.ndarray or list
-        :rtype: np.ndarray
+        Args:
+            data (np.ndarray | list): Numeric data to map from.
+
+        Returns:
+            np.ndarray: The mapped values.
         """
         return np.asarray(data, dtype=self.get_dtype())
 
@@ -476,12 +552,12 @@ def _mask_variables(variables: dict, mask: list) -> dict:
     """
     Helper function to filter out variables that are not in the mask.
 
-    :param variables: The variables to filter
-    :type variables: dict
-    :param mask: The list of variables to keep
-    :type mask: list
-    :return: Masked dictionary
-    :rtype: dict
+    Args:
+        variables (dict): The variables to filter.
+        mask (list): The list of variables to keep.
+
+    Returns:
+        dict: Masked dictionary.
     """
     if mask is None:
         return variables
@@ -501,10 +577,10 @@ class Sampler:
 
     def __init__(self, variables=None):
         """
-        Initializes the sampler.
+        Initialize the sampler.
 
-        :param variables: A dictionary associating the name of each variable to its ValueContainer.
-        :type variables:  dict
+        Args:
+            variables (dict | None): A dictionary associating the name of each variable to its ValueContainer.
         """
         self.variables = None
 
@@ -514,8 +590,10 @@ class Sampler:
 
     def _raise_if_variables_not_set(self):
         """
-        :raise SamplerError: Raise an exception if the variables are not set,
-        or if the variables are empty.
+        Raise an exception if the variables are not set or if the variables are empty.
+
+        Raises:
+            SamplerError: If the variables are not set or if the variables are empty.
         """
 
         if self.variables is None:
@@ -525,10 +603,10 @@ class Sampler:
 
     def set_variables(self, variables: dict):
         """
-        Sets the variables to be sampled.
+        Set the variables to be sampled.
 
-        :param variables:
-            A dictionary associating the name of each variable to its ValueContainer.
+        Args:
+            variables (dict): A dictionary associating the name of each variable to its ValueContainer.
         """
 
         self.variables = variables

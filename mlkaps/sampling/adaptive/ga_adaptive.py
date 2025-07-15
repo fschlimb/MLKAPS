@@ -356,7 +356,7 @@ class GAAdaptiveSampler:
             objectives=self.objectives,
             parameters=self.parameters,
             input_names=self.input_names,
-            models=models,
+            surrogate_models=models,
         )
         algorithm = NSGA2(
             sampling=MixedVariableSampling(),

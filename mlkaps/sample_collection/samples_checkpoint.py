@@ -14,20 +14,26 @@ import csv
 
 
 class SamplesCheckpoint:
+    """
+    A checkpoint system for managing kernel sampling data persistence.
+
+    This class handles the saving and loading of sample data to/from CSV files,
+    providing functionality for quick restart capabilities and data validation.
+    """
+
     def __init__(self, *, output_directory, parameters: dict, objectives: list):
         """
         Initialize the sample checkpoint for kernel sampling.
 
-        :param output_directory: Path to the output directory where sample files will be stored.
-            Can be a string or pathlib.Path.
-        :type output_directory: str or pathlib.Path
-        :param parameters: Dictionary containing kernel inputs and design parameters.
-        :type parameters: dict
-        :param objectives: List of objectives.
-        :type objectives: list
+        Args:
+            output_directory (str | pathlib.Path): Path to the output directory where sample files will be stored.
+                Can be a string or pathlib.Path.
+            parameters (dict): Dictionary containing kernel inputs and design parameters.
+            objectives (list): List of objectives.
 
-        The output file will be created in the 'kernel_sampling' subdirectory of the given output directory.
-        If the file exists, new samples will be appended; otherwise, it will be created upon first write.
+        Note:
+            The output file will be created in the 'kernel_sampling' subdirectory of the given output directory.
+            If the file exists, new samples will be appended; otherwise, it will be created upon first write.
         """
         # Do not create the file here.  If it does exist, we will append new samples.
         if isinstance(output_directory, str):
@@ -42,14 +48,27 @@ class SamplesCheckpoint:
         self.restarted = False
 
     def delete_file(self):
-        # Delete the checkpoint file and its directory
+        """
+        Delete the checkpoint file and its directory.
+
+        Note:
+            The directory will only be removed if it's empty.
+        """
         if self.output_path.exists():
             self.output_path.unlink()  # Remove the file
         if self.output_directory.exists():
             self.output_directory.rmdir()  # Remove the directory (only if it's empty)
 
     def restart(self):
-        # support quick restart
+        """
+        Support quick restart by loading samples from previous run.
+
+        Returns:
+            pd.DataFrame: The samples loaded from the previous run.
+
+        Raises:
+            FileNotFoundError: If the output file does not exist.
+        """
         logging.info("Quick-restart: Loading the samples from previous run")
         if not self.output_path.exists():
             raise FileNotFoundError(self.output_path)
@@ -58,7 +77,19 @@ class SamplesCheckpoint:
         return restart_samples
 
     def maybe_load_samples(self, verbose: bool = True):
-        # load samples if they are there.  This is not for a top-level quick restart
+        """
+        Load samples if they are there. This is not for a top-level quick restart.
+
+        Args:
+            verbose (bool): Whether to log information about loading samples. Defaults to True.
+
+        Returns:
+            pd.DataFrame | None: The loaded samples if they exist, None otherwise.
+
+        Note:
+            Will not reload if samples were already loaded for a requested restart.
+            Will not reload if the file does not exist.
+        """
 
         # do not reload if we loaded them for a requested restart
         if self.restarted:
@@ -81,7 +112,15 @@ class SamplesCheckpoint:
         return loaded_samples
 
     def _sanity_check(self, samples: pd.DataFrame):
-        # check if the samples look OK
+        """
+        Check if the samples look OK by validating columns, types, and data integrity.
+
+        Args:
+            samples (pd.DataFrame): The samples to validate.
+
+        Raises:
+            AssertionError: If any validation check fails.
+        """
         try:
             # expected number of columns
             _, ncols = samples.shape
@@ -115,8 +154,16 @@ class SamplesCheckpoint:
             raise e
 
     def _compatible_types(self, sample_type, expected_type):
-        # sample_type is from the dataframe
-        # expected_type is from ML-KAPS parameter
+        """
+        Check if sample type is compatible with expected type.
+
+        Args:
+            sample_type: The type from the dataframe.
+            expected_type: The type from ML-KAPS parameter.
+
+        Returns:
+            bool: True if the types are compatible, False otherwise.
+        """
         if sample_type == "float64" and expected_type == "float":
             return True
         if sample_type == "int64" and expected_type == "int":
@@ -130,7 +177,15 @@ class SamplesCheckpoint:
         return False
 
     def consistency_check(self, samples: pd.DataFrame):
-        # check if samples.csv matches the samples in memory
+        """
+        Check if samples.csv matches the samples in memory.
+
+        Args:
+            samples (pd.DataFrame): The samples in memory to compare against saved samples.
+
+        Raises:
+            AssertionError: If the samples don't match the saved samples.
+        """
         saved_samples = pd.read_csv(self.output_path)
         assert (
             samples.shape == saved_samples.shape
@@ -143,6 +198,20 @@ class SamplesCheckpoint:
             raise e
 
     def save_batch(self, batch: pd.DataFrame):
+        """
+        Save a batch of samples to the output file.
+
+        Args:
+            batch (pd.DataFrame): The batch of samples to save.
+
+        Returns:
+            pd.DataFrame: The saved batch (same as input).
+
+        Note:
+            The batch will be sorted by column names to ensure consistent ordering.
+            Column headers are only written when creating the file, not for subsequent appends.
+            This should be the only place where samples are written to the samples.csv file.
+        """
 
         # Sort the samples DataFrame by column names
         _, ncols = batch.shape
@@ -151,7 +220,7 @@ class SamplesCheckpoint:
 
         # Append batch to output file
         # We make sure that the column order is the same as what has already been
-        # written to the csv file. We write the colum nheaders only when we create the file,
+        # written to the csv file. We write the column headers only when we create the file,
         # not for subsequent appends.
         # *** This should be the only place we write samples to the samples.csv file ***
         if self.output_path.exists() and self.output_path.is_file():

@@ -15,14 +15,14 @@ from .hvs import HVSampler
 
 class MultilevelHVS(AdaptiveSampler):
     """
-    Multilevel version of the Hierarchical Variance Sampling (HVS) Algorithm
-    This sampler recursively partitions the data based on multiple levels of features
+    Multilevel version of the Hierarchical Variance Sampling (HVS) Algorithm.
+
+    This sampler recursively partitions the data based on multiple levels of features.
     This is equivalent to decision tree partitioning with constraints on the splitting criterion
     ordering.
 
     When the final level is reached, the HVS algorithm is used to sample the data based on
-    the final partitions
-
+    the final partitions.
     """
 
     def __init__(
@@ -34,16 +34,13 @@ class MultilevelHVS(AdaptiveSampler):
         """
         Create a new MultilevelHVS sampler.
 
-        :param features_levels:
-            A list of lists defining the hierarchical feature levels for multilevel partitioning.
-            Each inner list contains feature names for that partitioning level.
-            If None, must be set later using set_per_level_features method.
-            Defaults to None
-        :type features_levels: list[list] | None, optional
-        :param variables:
-            A dictionary containing the ValueContainers of the variables to sample.
-            The keys must be the name of the variables.
-        :type variables: dict | None, optional
+        Args:
+            features_levels (list[list] | None, optional): A list of lists defining the hierarchical
+                feature levels for multilevel partitioning. Each inner list contains feature names
+                for that partitioning level. If None, must be set later using set_per_level_features
+                method. Defaults to None.
+            variables (dict | None, optional): A dictionary containing the ValueContainers of the
+                variables to sample. The keys must be the name of the variables.
         """
         self.hvs = HVSampler(variables=variables, error_metric="cov")
 
@@ -52,15 +49,43 @@ class MultilevelHVS(AdaptiveSampler):
         self.partitions = []
 
     def reset(self):
+        """
+        Reset the sampler state.
+
+        This method is currently not implemented and returns without performing any action.
+        """
         return
 
     def dump(self, output_directory):
+        """
+        Save the sampler state to a directory.
+
+        This method is currently not implemented and returns without performing any action.
+
+        Args:
+            output_directory: The directory where the sampler state should be saved.
+        """
         return
 
     def set_per_level_features(self, leveled_features: list[list]):
+        """
+        Set the hierarchical feature levels for multilevel partitioning.
+
+        Args:
+            leveled_features (list[list]): A list of lists defining the hierarchical
+                feature levels for multilevel partitioning. Each inner list contains
+                feature names for that partitioning level.
+        """
         self.features_levels = leveled_features
 
     def set_variables(self, variables, mask=None):
+        """
+        Set the variables to be sampled.
+
+        Args:
+            variables: A dictionary containing the ValueContainers of the variables to sample.
+            mask (optional): A mask to filter the variables. Defaults to None.
+        """
         super().set_variables(variables, mask)
         self.hvs.set_variables(variables, mask)
 
@@ -70,6 +95,25 @@ class MultilevelHVS(AdaptiveSampler):
         data: pd.DataFrame | None,
         execution_func: Callable[[pd.DataFrame], pd.DataFrame],
     ) -> pd.DataFrame:
+        """
+        Sample new data points using the multilevel HVS algorithm.
+
+        This method performs multilevel partitioning of the data based on the configured
+        feature levels and samples new points using the HVS algorithm.
+
+        Args:
+            n_samples (int): The number of samples to generate.
+            data (pd.DataFrame | None): The existing data to use for partitioning. If None
+                or empty, bootstrap sampling is performed.
+            execution_func (Callable[[pd.DataFrame], pd.DataFrame]): A function that takes
+                a DataFrame of samples and returns a DataFrame with evaluated objectives.
+
+        Returns:
+            pd.DataFrame: The updated data containing both existing and new samples.
+
+        Raises:
+            Exception: If features_levels is not set.
+        """
 
         if self.features_levels is None:
             raise Exception("Features levels not set")
@@ -103,6 +147,22 @@ class MultilevelHVS(AdaptiveSampler):
         n_samples: int,
         axes=None,
     ) -> pd.DataFrame:
+        """
+        Recursively partition the data based on hierarchical feature levels.
+
+        This method applies multilevel partitioning by recursively processing each level
+        of features and delegating to either final or intermediate partitioning methods.
+
+        Args:
+            objective: The objective column name to optimize during partitioning.
+            data (pd.DataFrame): The data to partition.
+            leveled_features (list[list]): The remaining feature levels to process.
+            n_samples (int): The number of samples to generate.
+            axes (optional): The axis limitations from previous levels. Defaults to None.
+
+        Returns:
+            pd.DataFrame: The sampled data points from the partitioning process.
+        """
 
         # Run HVS based on the features in the current level
         features = {k: v for k, v in self.variables.items() if k in leveled_features[0]}
@@ -127,6 +187,22 @@ class MultilevelHVS(AdaptiveSampler):
         return new_samples
 
     def _partition_final(self, axes, data, features, n_samples, objective):
+        """
+        Perform final partitioning when the last level is reached.
+
+        This method applies HVS partitioning using the current features and samples
+        from the resulting partitions.
+
+        Args:
+            axes: The axis limitations from previous levels.
+            data: The data to partition.
+            features: The features to use for partitioning.
+            n_samples: The number of samples to generate.
+            objective: The objective column name to optimize during partitioning.
+
+        Returns:
+            The sampled data points from the final partitions.
+        """
 
         # First, partition using current features
         partitions, _ = self.hvs.partition(data, objective, n_samples, split_on=features, min_samples_per_leaf=15)
@@ -139,6 +215,16 @@ class MultilevelHVS(AdaptiveSampler):
         return self.hvs.sample_partitions(partitions)
 
     def _merge_axes(self, axes, partitions):
+        """
+        Merge axis limitations from previous levels with current partitions.
+
+        This method ensures that partitions respect the axis limitations from previous
+        levels by merging them with the current partition axes.
+
+        Args:
+            axes: The axis limitations from previous levels.
+            partitions: The current partitions to merge axes with.
+        """
         # Merge the axes defined in the partition with the axes defined in the previous levels
         for partition in partitions:
             partition = partition[1]
@@ -147,6 +233,23 @@ class MultilevelHVS(AdaptiveSampler):
                     partition.axes[axis] = axes[axis]
 
     def _partition_intermediate(self, axes, data, features, n_samples, next_features, objective):
+        """
+        Perform intermediate partitioning when more levels remain.
+
+        This method applies HVS partitioning using the current features and then
+        recursively applies the next level on each partition.
+
+        Args:
+            axes: The axis limitations from previous levels.
+            data: The data to partition.
+            features: The features to use for partitioning.
+            n_samples: The number of samples to generate.
+            next_features: The remaining feature levels to process.
+            objective: The objective column name to optimize during partitioning.
+
+        Returns:
+            The sampled data points from all intermediate partitions.
+        """
         # First, partition using current features
         # The minimum number of samples per leaf must be high enough so that we can split on the
         # next level
