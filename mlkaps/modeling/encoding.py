@@ -12,10 +12,15 @@ _encoding = {
     "int": "int64",
     "float": "float64",
     "bool": "bool",
+    # Support for raw Python types returned by get_dtype()
+    str: "category",
+    int: "int64",
+    float: "float64",
+    bool: "bool",
 }
 
 
-def encode_dataframe(dtypes: dict, dataframe: pd.DataFrame):
+def encode_dataframe(parameters: dict, dataframe: pd.DataFrame):
     """
     This function iterate on the columns of a dataframe,
     and assigns the correct type to each column.
@@ -36,9 +41,9 @@ def encode_dataframe(dtypes: dict, dataframe: pd.DataFrame):
     """
     mapping = {}
     for feature in dataframe.columns:
-        if feature not in dtypes:
+        if feature not in parameters:
             continue
-        ftype = dtypes[feature]
+        ftype = parameters[feature].get_dtype()
         mapping[feature] = _encoding[ftype]
     encoded_dataframe = dataframe.astype(mapping)
     return encoded_dataframe

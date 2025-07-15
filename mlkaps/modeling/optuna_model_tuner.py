@@ -61,7 +61,7 @@ class OptunaModelTuner:
 
         :param trial: The current optuna trial
         :type trial: optuna.trial
-        :return: A dictionnary containing the hyperparameters for the model
+        :return: A dictionary containing the hyperparameters for the model
         :rtype: dict
         """
         raise NotImplementedError()

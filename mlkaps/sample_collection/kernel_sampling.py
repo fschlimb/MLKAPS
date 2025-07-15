@@ -93,7 +93,6 @@ class _StaticSamplerInterfaceWrapper:
         *,
         kernel_sampler,
         # Configuration parameters that were previously in config
-        parameters_type: dict,
         feature_values: dict,
         output_directory: pathlib.Path,
         # Parameters that were previously in config_dict
@@ -108,8 +107,6 @@ class _StaticSamplerInterfaceWrapper:
 
         :param kernel_sampler: Callable that executes kernel samples
         :type kernel_sampler: Callable
-        :param parameters_type: Dictionary mapping parameter names to their types
-        :type parameters_type: dict
         :param feature_values: Dictionary of feature values for sampling
         :type feature_values: dict
         :param output_directory: Directory where output files will be saved
@@ -129,7 +126,6 @@ class _StaticSamplerInterfaceWrapper:
 
         self.kernel_sampler = kernel_sampler
         self.output_directory = output_directory
-        self.parameters_type = parameters_type
         self.feature_values = feature_values
         self.sampler_type = sampler_type
         self.nsamples = nsamples
@@ -157,15 +153,14 @@ class _StaticSamplerInterfaceWrapper:
         # We need to create a minimal config-like object for SamplerFactory
         # This is a temporary solution until SamplerFactory is also refactored
         class ConfigProxy:
-            def __init__(self, parameters_type, feature_values):
-                self.parameters_type = parameters_type
+            def __init__(self, feature_values):
                 self.feature_values = feature_values
 
-        config_proxy = ConfigProxy(self.parameters_type, self.feature_values)
+        config_proxy = ConfigProxy(self.feature_values)
         sampler = SamplerFactory(config_proxy).from_config(self.sampler_type, self.sampler_parameters)
 
         if hasattr(sampler, "set_variables"):
-            sampler.set_variables(self.parameters_type, self.feature_values)
+            sampler.set_variables(self.feature_values)
 
         return sampler, self.nsamples
 
@@ -219,7 +214,6 @@ class _GAAdaptiveInterfaceWrapper:
         # Configuration parameters that were previously in config
         output_directory: pathlib.Path,
         objectives: list,
-        parameters_type: dict,
         feature_values: dict,
         input_parameters: list,
         # Required GA parameters
@@ -244,8 +238,6 @@ class _GAAdaptiveInterfaceWrapper:
         :type output_directory: pathlib.Path
         :param objectives: List of objective function names to optimize
         :type objectives: list
-        :param parameters_type: Dictionary mapping parameter names to their types
-        :type parameters_type: dict
         :param feature_values: Dictionary of feature values for sampling
         :type feature_values: dict
         :param input_parameters: List of input parameter names
@@ -276,7 +268,6 @@ class _GAAdaptiveInterfaceWrapper:
         self.kernel_sampler = kernel_sampler
         self.output_directory = output_directory
         self.objectives = objectives
-        self.parameters_type = parameters_type
         self.feature_values = feature_values
         self.input_parameters = input_parameters
         self.n_samples = n_samples
@@ -317,7 +308,6 @@ class _GAAdaptiveInterfaceWrapper:
             final_ga_ratio=self.final_ga_ratio,
             output_directory=self.output_directory,
             objectives=self.objectives,
-            parameters_type=self.parameters_type,
             feature_values=self.feature_values,
             input_parameters=self.input_parameters,
             do_early_stopping=self.do_early_stopping,
@@ -367,7 +357,6 @@ class _AdaptiveSamplerInterfaceWrapper:
         *,
         kernel_sampler,
         # Configuration parameters that were previously in config
-        parameters_type: dict,
         feature_values: dict,
         input_parameters: list,
         design_parameters: list,
@@ -385,8 +374,6 @@ class _AdaptiveSamplerInterfaceWrapper:
 
         :param kernel_sampler: Callable that executes kernel samples
         :type kernel_sampler: Callable
-        :param parameters_type: Dictionary mapping parameter names to their types
-        :type parameters_type: dict
         :param feature_values: Dictionary of feature values for sampling
         :type feature_values: dict
         :param input_parameters: List of input parameter names
@@ -411,7 +398,6 @@ class _AdaptiveSamplerInterfaceWrapper:
             raise ValueError("The kernel sampler must be a callable object")
 
         self.kernel_sampler = kernel_sampler
-        self.parameters_type = parameters_type
         self.feature_values = feature_values
         self.input_parameters = input_parameters
         self.design_parameters = design_parameters
@@ -447,15 +433,14 @@ class _AdaptiveSamplerInterfaceWrapper:
 
         # We need to create a minimal config-like object for SamplerFactory
         class ConfigProxy:
-            def __init__(self, parameters_type, feature_values):
-                self.parameters_type = parameters_type
+            def __init__(self, feature_values):
                 self.feature_values = feature_values
 
-        config_proxy = ConfigProxy(self.parameters_type, self.feature_values)
+        config_proxy = ConfigProxy(self.self.feature_values)
         sampler = SamplerFactory(config_proxy).from_config(self.sampler_type, self.method_parameters)
 
         if hasattr(sampler, "set_variables"):
-            sampler.set_variables(self.parameters_type, self.feature_values)
+            sampler.set_variables(self.self.feature_values)
 
         if hasattr(sampler, "set_per_level_features"):
             levels = [self.input_parameters, self.design_parameters]
@@ -658,7 +643,6 @@ class SamplingSystemFactory:
         objectives: list,
         objectives_bounds: dict = None,
         working_directory: pathlib.Path,
-        parameters_type: dict = None,
         feature_values: dict = None,
         input_parameters: list = None,
         design_parameters: list = None,
@@ -683,8 +667,6 @@ class SamplingSystemFactory:
         :type objectives_bounds: dict | None
         :param working_directory: Working directory for relative path resolution
         :type working_directory: pathlib.Path
-        :param parameters_type: Dictionary mapping parameter names to their types (optional)
-        :type parameters_type: dict | None
         :param feature_values: Dictionary of feature values for sampling (optional)
         :type feature_values: dict | None
         :param input_parameters: List of input parameter names (optional)
@@ -710,7 +692,6 @@ class SamplingSystemFactory:
         self.objectives = objectives
         self.objectives_bounds = objectives_bounds
         self.working_directory = working_directory
-        self.parameters_type = parameters_type
         self.feature_values = feature_values
         self.input_parameters = input_parameters
         self.design_parameters = design_parameters
@@ -760,7 +741,6 @@ class SamplingSystemFactory:
                 kernel_sampler=kernel_sampler,
                 output_directory=self.output_directory,
                 objectives=self.objectives,
-                parameters_type=self.parameters_type,
                 feature_values=self.feature_values,
                 input_parameters=self.input_parameters,
                 samples_checkpoint=self.samples_checkpoint,
@@ -770,7 +750,6 @@ class SamplingSystemFactory:
             # Adaptive sampler parameters
             return _AdaptiveSamplerInterfaceWrapper(
                 kernel_sampler=kernel_sampler,
-                parameters_type=self.parameters_type,
                 feature_values=self.feature_values,
                 input_parameters=self.input_parameters,
                 design_parameters=self.design_parameters,
@@ -783,7 +762,6 @@ class SamplingSystemFactory:
             # Static sampler parameters
             return _StaticSamplerInterfaceWrapper(
                 kernel_sampler=kernel_sampler,
-                parameters_type=self.parameters_type,
                 feature_values=self.feature_values,
                 output_directory=self.output_directory,
                 sampler_type=self.sampler,
@@ -821,7 +799,6 @@ def _build_kernel_sampler(config: ExperimentConfig, config_dict: dict, samples_c
         objectives=config.objectives,
         objectives_bounds=getattr(config, "objectives_bounds", None),
         working_directory=config.working_directory,
-        parameters_type=getattr(config, "parameters_type", None),
         feature_values=getattr(config, "feature_values", None),
         input_parameters=getattr(config, "input_parameters", None),
         design_parameters=getattr(config, "design_parameters", None),
@@ -884,7 +861,7 @@ def sample_kernel() -> pd.DataFrame:
         objectives=objective,
         parameters=all_params,
         input_names=inputs.keys(),
-        n_samples=100,
+        n_samples=30,
         samples_per_iteration=10,
         output_directory=out_dir,
         samples_checkpoint=checkpoint,

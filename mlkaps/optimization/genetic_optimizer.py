@@ -12,6 +12,7 @@ from tqdm import tqdm
 import os
 import logging
 import time
+import pathlib
 
 
 import pymoo.core.result
@@ -39,123 +40,160 @@ from mlkaps.sampling.sampler import ValueSet
 from mlkaps.optimization.optimizer_checkpoint import OptimizerCheckpoint
 
 
-class GeneticOptimizerConfig:
+def _get_parameter_types(parameters: dict) -> dict:
     """
-    Configuration object for the genetic optimizer module
+    Extract parameter types from a parameters dictionary using get_dtype() on each parameter value container.
 
-    This class is used to store all parameters related to the genetic optimizer, as well as
-    the parsing logic from the configuration dictionary.
+    Parameters
+    ----------
+    parameters : dict
+        Dictionary mapping parameter names to their parameter value objects (ValueContainer instances)
+
+    Returns
+    -------
+    dict
+        Dictionary mapping parameter names to their types as strings
     """
+    types = {}
+    for name, param in parameters.items():
+        dtype = param.get_dtype()
+        # Map the dtype to the expected string values
+        if dtype == "int":
+            types[name] = "int"
+        elif dtype == "float":
+            types[name] = "float"
+        elif dtype == str:
+            types[name] = "categorical"
+        elif dtype == bool:
+            types[name] = "bool"
+        else:
+            # For backward compatibility, assume it's already a string
+            types[name] = str(dtype)
+    return types
 
-    def __init__(
-        self,
-        experiment_configuration: ExperimentConfig,
-        sampler,
-        samples_count,
-        do_early_stopping=False,
-    ):
-        """
-        Create a new GeneticOptimizerConfig object
 
-        Parameters
-        ----------
-        experiment_configuration: ExperimentConfig
-            The global configuration of the experiment
+def _parse_genetic_optimization_config(config_dict: dict):
+    """
+    Extract the genetic optimization parameters from the configuration dictionary
 
-        sampler: Sampler
-            The sampler to use to generate the optimization points
+    Parameters
+    ----------
+    config_dict : dict
+        Configuration dictionary containing optimization parameters
 
-        samples_count: int
-            The number of optimization points to generate
+    Returns
+    -------
+    dict
+        Dictionary containing parsed optimization parameters
+    """
+    if "optimization_parameters" not in config_dict:
+        raise Exception("Missing optimization_parameters section in the configuration dict")
 
-        """
+    parameter_section = config_dict["optimization_parameters"]
 
-        self.experiment_configuration = experiment_configuration
+    selection_method = parameter_section.get("selection_method", "normalized_selection")
 
-        # Default every objective to the same weight
-        self.normalization_coefficients = {k: 1 for k in experiment_configuration.objectives}
+    # Load algorithm specific parameters
+    optimization_parameters = parameter_section.get("evolution", {})
 
-        # Default parameters
-        # FIXME: This should be a parameter
-        self.termination_criterion = get_termination("time", "00:00:30")
-        self.optimization_parameters = {}
+    # Build the termination criterion as a pymoo collection of termination object
+    termination = parameter_section.get("termination", {})
+    terminations = [get_termination(k, v) for k, v in termination.items()]
+    termination_criterion = TerminationCollection(*terminations)
 
-        # FIXME: This should be a parameter
-        self.selection_method = "normalized"
-        self.sampler = sampler
-        sampler.set_variables(
-            experiment_configuration.parameters_type,
-            experiment_configuration["parameters"]["features_values"],
-            mask=experiment_configuration.input_parameters,
-        )
-        self.samples_count = samples_count
+    # Initialize normalization coefficients
+    normalization_coefficients = {}
 
-        self.do_early_stopping = do_early_stopping
-
-    @staticmethod
-    def _parse_genetic_optimization(config, config_dict: dict):
-        """
-        Extract the genetic optimization parameters from the configuration dictionary, and update
-        the configuration object accordingly
-        """
-        if "optimization_parameters" not in config_dict:
-            raise Exception("Missing optimization_parameters section in the configuration dict")
-
-        parameter_section = config_dict["optimization_parameters"]
-
-        config.selection_method = parameter_section.get("selection_method", "normalized_selection")
-
-        # Load algorithm specific parameters
-        config.optimization_parameters = parameter_section.get("evolution", {})
-
-        # Build the termination criterion as a pymoo collection of termination object
-        termination = parameter_section.get("termination", {})
-        terminations = [get_termination(k, v) for k, v in termination.items()]
-
-        config.termination_criterion = TerminationCollection(*terminations)
-        if "selection_parameters" not in parameter_section:
-            return
-
+    if "selection_parameters" in parameter_section:
         selection_parameters = parameter_section["selection_parameters"]
         coefficients = selection_parameters.get("coefficients", {})
+        normalization_coefficients.update(coefficients)
 
-        # Handle feature-specific selection coefficient
-        for obj in coefficients:
-            if obj not in config.experiment_configuration.objectives:
-                raise Exception(f'Coefficient set for undefined objective "{obj}"')
-            config.normalization_coefficients[obj] = selection_parameters["coefficients"][obj]
+    return {
+        "selection_method": selection_method,
+        "optimization_parameters": optimization_parameters,
+        "termination_criterion": termination_criterion,
+        "normalization_coefficients": normalization_coefficients,
+    }
 
-    @staticmethod
-    def from_configuration_dict(config_dict: dict, exp_config: ExperimentConfig):
-        """
-        Parse a GeneticOptimizerConfig object from a configuration dictionary
-        """
 
-        optim_section = config_dict["OPTIMIZATION"]
-        optimization_method = optim_section["optimization_method"]
+def create_genetic_optimizer_from_config(
+    config_dict: dict, exp_config: ExperimentConfig, surrogate_models: dict, optimizer_checkpoint: OptimizerCheckpoint
+):
+    """
+    Create a GeneticOptimizer from a configuration dictionary
 
-        # Ensure that the configuration is for a genetic optimizer
-        if optimization_method != "genetic":
-            raise Exception(
-                "Tried to parse a genetic optimizer configuration, but the configuration dict "
-                f"specifies a '{optimization_method}' optimization method"
-            )
+    Parameters
+    ----------
+    config_dict : dict
+        Configuration dictionary
+    exp_config : ExperimentConfig
+        Experiment configuration
+    surrogate_models : dict
+        Dictionary of surrogate models for each objective
+    optimizer_checkpoint : OptimizerCheckpoint
+        Checkpoint manager for optimization state
 
-        sampler = SamplerFactory(exp_config).from_config(optim_section["sampling"]["sampler"]["sampling_method"])
-        sampler.set_variables(
-            exp_config.parameters_type,
-            exp_config["parameters"]["features_values"],
-            mask=exp_config.input_parameters,
+    Returns
+    -------
+    GeneticOptimizer
+        Configured genetic optimizer instance
+    """
+    optim_section = config_dict["OPTIMIZATION"]
+    optimization_method = optim_section["optimization_method"]
+
+    # Ensure that the configuration is for a genetic optimizer
+    if optimization_method != "genetic":
+        raise Exception(
+            "Tried to parse a genetic optimizer configuration, but the configuration dict "
+            f"specifies a '{optimization_method}' optimization method"
         )
-        sample_count = optim_section["sampling"]["sample_count"]
-        early_stopping = optim_section["optimization_parameters"].get("early_stopping", False)
 
-        # Build the configuration object with basic parameters
-        res = GeneticOptimizerConfig(exp_config, sampler, sample_count, do_early_stopping=early_stopping)
-        # Parse additional parameters
-        GeneticOptimizerConfig._parse_genetic_optimization(res, optim_section)
+    # Parse optimization-specific parameters
+    parsed_config = _parse_genetic_optimization_config(optim_section)
 
-        return res
+    # Create sampler
+    sampler = SamplerFactory(exp_config).from_config(optim_section["sampling"]["sampler"]["sampling_method"])
+
+    # Filter feature values based on input parameters
+    filtered_features = {
+        k: v for k, v in exp_config["parameters"]["features_values"].items() if k in exp_config.input_parameters
+    }
+    sampler.set_variables(filtered_features)
+
+    sample_count = optim_section["sampling"]["sample_count"]
+    early_stopping = optim_section["optimization_parameters"].get("early_stopping", False)
+
+    # Validate objectives and set up normalization coefficients
+    objectives = exp_config.objectives
+    normalization_coefficients = parsed_config["normalization_coefficients"]
+
+    # Handle objective-specific normalization coefficients
+    for obj in normalization_coefficients:
+        if obj not in objectives:
+            raise Exception(f'Coefficient set for undefined objective "{obj}"')
+
+    # Default every objective to the same weight if not specified
+    for obj in objectives:
+        if obj not in normalization_coefficients:
+            normalization_coefficients[obj] = 1
+
+    # Create the optimizer with keyword arguments
+    return GeneticOptimizer(
+        objectives=objectives,
+        parameters=exp_config["parameters"]["features_values"],
+        input_names=exp_config.input_parameters,
+        optimization_parameters=parsed_config["optimization_parameters"],
+        termination_criterion=parsed_config["termination_criterion"],
+        normalization_coefficients=normalization_coefficients,
+        selection_method=parsed_config["selection_method"],
+        do_early_stopping=early_stopping,
+        output_directory=exp_config.output_directory,
+        sampler=sampler,
+        samples_count=sample_count,
+        surrogate_models=surrogate_models,
+        optimizer_checkpoint=optimizer_checkpoint,
+    )
 
 
 class DesignParametersProblem(Problem):
@@ -165,38 +203,43 @@ class DesignParametersProblem(Problem):
     population of models to find the best parameters for a given kernel inputs
     """
 
-    def __init__(self, configuration: ExperimentConfig, objectives_models: dict):
+    def __init__(self, *, objectives: list, parameters: dict, input_names: list, models: dict, model_type: str = "lightgbm"):
         """
-        Initialize the problem with the configuration and the models
+        Initialize the DesignParametersProblem.
 
         Parameters
         ----------
-        configuration:
-            The global configuration of the experiment
-
-        objectives_models:
-            The models generate in the modeling phase
+        objectives : list
+            List of objective names to optimize.
+        parameters : dict
+            Dictionary mapping parameter names to their parameter value objects.
+        input_names : list
+            List of input parameter names that are fixed during optimization.
+        models : dict
+            Dictionary of surrogate models for each objective.
+        model_type : str, optional
+            The type of model to use, by default "lightgbm".
         """
 
         # Kernels inputs will be defined later on
         self.kernel_inputs = None
         self.input_columns = None
 
-        self.configuration = configuration
-        # Extract the name and type of the optimization feature
-        # FIXME: this probably should be a method in the configuration
-        self.optimization_parameters = {
-            k: t for k, t in configuration.parameters_type.items() if k in configuration.design_parameters
-        }
+        self.objectives = objectives
+        self.parameters = parameters
+        self.input_names = input_names
+        self.surrogate_models = models
+        self.model_type = model_type
 
-        self.model_type = configuration["modeling"]["modeling_method"]
-        self.surrogate_models = objectives_models
-        self.objectives_count = len(self.configuration.objectives)
+        # Extract the name and type of the optimization feature
+        # Get parameter types from the parameters using get_dtype()
+        parameters_type = _get_parameter_types(parameters)
+        self.optimization_parameters = {k: t for k, t in parameters_type.items() if k not in self.input_names}
+
+        self.objectives_count = len(self.objectives)
 
         if self.objectives_count > 2:
             raise ValueError("Only 1D and 2D optimization problems are currently supported")
-
-        self.objectives_directions = configuration["experiment"]["objectives_directions"]
 
         mixed_vars = self._define_vars()
         super().__init__(vars=mixed_vars, n_obj=self.objectives_count)
@@ -204,20 +247,20 @@ class DesignParametersProblem(Problem):
     def _define_vars(self):
         # To define a mixed precision problem, we need to define each
         # variable, and their respective bound
-        feature_values = self.configuration["parameters"]["features_values"]
+        parameters = self.parameters
 
         mixed_vars = {}
         for name, parameter_type in self.optimization_parameters.items():
             match parameter_type:
                 case "float":
-                    pymoo_var = Real(bounds=feature_values[name].get_sampling_bounds())
+                    pymoo_var = Real(bounds=parameters[name].get_sampling_bounds())
                 case "int":
-                    pymoo_var = Integer(bounds=feature_values[name].get_sampling_bounds())
+                    pymoo_var = Integer(bounds=parameters[name].get_sampling_bounds())
                 case "bool":
                     pymoo_var = Binary()
                 case "categorical":
-                    assert isinstance(feature_values[name], ValueSet)
-                    pymoo_var = Choice(options=feature_values[name].sample_linear_space())
+                    assert isinstance(parameters[name], ValueSet)
+                    pymoo_var = Choice(options=parameters[name].sample_linear_space())
                 case _:
                     raise ValueError(f"Unexpected variable type for '{name}' ('{parameter_type}')")
             mixed_vars[name] = pymoo_var
@@ -277,20 +320,20 @@ class DesignParametersProblem(Problem):
         predictions = []
 
         # Build all the predictions
-        for i in self.configuration.objectives:
-            prediction = self.surrogate_models[i].predict(model_inputs)
+        for obj in self.objectives:
+            prediction = self.surrogate_models[obj.name].predict(model_inputs)
 
             # If one of the objective is a mazimization objective, then reverse it
-            if self.objectives_directions[i] == "maximize":
+            if obj.direction == "maximize":
                 prediction *= -1
             predictions.append(prediction)
 
-        if len(self.configuration.objectives) == 1:
+        if len(self.objectives) == 1:
             out["F"] = predictions[0]
-        elif len(self.configuration.objectives) == 2:
+        elif len(self.objectives) == 2:
             out["F"] = np.column_stack(predictions)
         else:
-            raise Exception(f"Unsupported number of objectives ({len(self.configuration.objectives)})")
+            raise Exception(f"Unsupported number of objectives ({len(self.objectives)})")
 
 
 class _GeneticOptimizationMethod:
@@ -310,10 +353,44 @@ class _NormalizedOptimizationMethod(_GeneticOptimizationMethod):
     best solution
     """
 
-    def __init__(self, genetic_config: GeneticOptimizerConfig, surrogate_models):
-        self.config = genetic_config
+    def __init__(
+        self,
+        *,
+        objectives: list,
+        parameters: dict,
+        input_names: list,
+        optimization_parameters: dict,
+        termination_criterion,
+        normalization_coefficients: dict,
+        surrogate_models: dict,
+    ):
+        """
+        Initialize the normalized optimization method.
+
+        Parameters
+        ----------
+        objectives : list
+            List of objective function names
+        parameters : dict
+            Dictionary of parameter values for sampling
+        input_names : list
+            List of input parameter names
+        optimization_parameters : dict
+            Additional optimization parameters
+        termination_criterion : Any
+            Termination criterion for optimization
+        normalization_coefficients : dict
+            Dictionary mapping objective names to their normalization coefficients
+        surrogate_models : dict
+            Dictionary of surrogate models for each objective
+        """
+        self.objectives = objectives
+        self.parameters = parameters
+        self.input_names = input_names
+        self.optimization_parameters = optimization_parameters
+        self.termination_criterion = termination_criterion
+        self.normalization_coefficients = normalization_coefficients
         self.surrogate_models = surrogate_models
-        self.exp_config = self.config.experiment_configuration
 
     def _normalized_selection(self, raw_parameters, raw_objectives):
         """
@@ -340,7 +417,7 @@ class _NormalizedOptimizationMethod(_GeneticOptimizationMethod):
         """
 
         # FIXME: We should generalize this to any number of objectives
-        if len(self.config.experiment_configuration.objectives) != 2:
+        if len(self.objectives) != 2:
             raise Exception("Normalized selection requires exactly 2 objectives !")
 
         # Normalize the objectives, and find the best parameter set
@@ -359,7 +436,7 @@ class _NormalizedOptimizationMethod(_GeneticOptimizationMethod):
             (0, 1),
         )
 
-        coefficients = self.config.normalization_coefficients
+        coefficients = self.normalization_coefficients
         first_coefficient = list(coefficients.values())[0]
         second_coefficient = list(coefficients.values())[1]
 
@@ -369,8 +446,7 @@ class _NormalizedOptimizationMethod(_GeneticOptimizationMethod):
         )
 
         optimal_parameters = pd.Series(
-            raw_parameters[best_normalized_index],
-            index=self.exp_config.design_parameters,
+            raw_parameters[best_normalized_index], index=[k for k in self.parameters if k not in self.input_names]
         )
 
         # We return the raw objectives, not the normalized ones
@@ -399,14 +475,14 @@ class _NormalizedOptimizationMethod(_GeneticOptimizationMethod):
         # Create the algorithm object
         # NSGA2 For mixed variables
         algorithm = NSGA2(
-            **self.config.optimization_parameters,
+            **self.optimization_parameters,
             sampling=MixedVariableSampling(),
             mating=MixedVariableMating(eliminate_duplicates=MixedVariableDuplicateElimination()),
             eliminate_duplicates=MixedVariableDuplicateElimination(),
         )
 
         # Run the algorithm
-        res = minimize(problem, algorithm, termination=self.config.termination_criterion, seed=1)
+        res = minimize(problem, algorithm, termination=self.termination_criterion, seed=1)
         return res
 
     def run(self, kernel_input):
@@ -429,10 +505,14 @@ class _NormalizedOptimizationMethod(_GeneticOptimizationMethod):
                 the corresponding objective values
         """
         # FIXME: Normalized optimization can support as many as objectives as the user wants
-        if len(self.config.experiment_configuration.objectives) != 2:
+        if len(self.objectives) != 2:
             raise Exception("Normalized optimization currently only supports 2D optimization problems")
 
-        problem = DesignParametersProblem(self.config.experiment_configuration, self.surrogate_models)
+        problem = DesignParametersProblem(
+            objectives=self.objectives,
+            parameters=self.parameters,
+            input_names=self.input_names,
+        )
         problem.set_kernel_input(kernel_input)
 
         res = self._run_nsga2(problem)
@@ -449,42 +529,76 @@ class _MonoObjectiveOptimizationMethod(_GeneticOptimizationMethod):
 
     def __init__(
         self,
-        genetic_config: GeneticOptimizerConfig,
-        surogate_models,
-        record_history=True,
+        *,
+        objectives: list,
+        parameters: dict,
+        input_names: list,
+        optimization_parameters: dict,
+        termination_criterion,
+        do_early_stopping: bool,
+        output_directory: pathlib.Path,
+        surrogate_models: dict,
+        record_history: bool = True,
     ):
-        self.config = genetic_config
-        self.surrogate_models = surogate_models
+        """
+        Initialize the mono-objective optimization method.
+
+        Parameters
+        ----------
+        objectives : list
+            List of objective function names
+        parameters : dict
+            Dictionary of parameter values for sampling
+        input_names : list
+            List of input parameter names
+        optimization_parameters : dict
+            Additional optimization parameters
+        termination_criterion : Any
+            Termination criterion for optimization
+        do_early_stopping : bool
+            Whether to enable early stopping
+        output_directory : pathlib.Path
+            Directory where output files will be saved
+        surrogate_models : dict
+            Dictionary of surrogate models for each objective
+        record_history : bool, optional
+            Whether to record optimization history, by default True
+        """
+        self.objectives = objectives
+        self.parameters = parameters
+        self.input_names = input_names
+        self.optimization_parameters = optimization_parameters
+        self.termination_criterion = termination_criterion
+        self.do_early_stopping = do_early_stopping
+        self.output_directory = output_directory
+        self.surrogate_models = surrogate_models
         self.do_record = record_history
 
-        if genetic_config.do_early_stopping:
-            criterion = self._build_early_stopping_criterion(genetic_config, surogate_models)
-            self.termination = TerminationCollection(genetic_config.termination_criterion, criterion)
+        if do_early_stopping:
+            criterion = self._build_early_stopping_criterion(surrogate_models)
+            self.termination = TerminationCollection(termination_criterion, criterion)
         else:
-            self.termination = genetic_config.termination_criterion
+            self.termination = termination_criterion
 
-    def _build_early_stopping_criterion(self, genetic_config: GeneticOptimizerConfig, surogate_models) -> RobustTermination:
+    def _build_early_stopping_criterion(self, surrogate_models) -> RobustTermination:
         """Build a stopping criterion with an heuristic for the convergence threshold
 
         Execute 10k random solutions, and take a fraction of the minimum value as a threshold
 
-        :param genetic_config: The configuration of the optimizer
-        :type genetic_config: GeneticOptimizerConfig
-        :param surogate_models: The models to compute the threshold with
-        :type surogate_models: dict
+        :param surrogate_models: The models to compute the threshold with
+        :type surrogate_models: dict
         :return: A convergence stopping criterion
         :rtype: RobustTermination
         """
 
         begin = time.time()
 
-        exp_config = genetic_config.experiment_configuration
-        sampler = RandomSampler(variable_types=exp_config.parameters_type, variable_values=exp_config.feature_values)
+        sampler = RandomSampler(variables=self.parameters)
 
         samples = sampler.sample(10000)
 
         predictions = None
-        for m in surogate_models.values():
+        for m in surrogate_models.values():
             pred = m.predict(samples)
             if predictions is None:
                 predictions = pred
@@ -518,13 +632,17 @@ class _MonoObjectiveOptimizationMethod(_GeneticOptimizationMethod):
                 The corresponding objective values
         """
 
-        if len(self.config.experiment_configuration.objectives) != 1:
+        if len(self.objectives) != 1:
             raise Exception("Mono objective optimization was used with multiples objectives")
 
-        problem = DesignParametersProblem(self.config.experiment_configuration, self.surrogate_models)
+        problem = DesignParametersProblem(
+            objectives=self.objectives,
+            parameters=self.parameters,
+            input_names=self.input_names,
+        )
         problem.set_kernel_input(kernel_input)
 
-        algorithm = MixedVariableGA(**self.config.optimization_parameters)
+        algorithm = MixedVariableGA(**self.optimization_parameters)
 
         res = minimize(
             problem,
@@ -563,7 +681,7 @@ class _MonoObjectiveOptimizationMethod(_GeneticOptimizationMethod):
         db = pd.concat(dbs, axis=0).reset_index(drop=True)
 
         # Check for existing records to append to
-        output_path = self.config.experiment_configuration.output_directory / "ga_convergence_study/records.csv"
+        output_path = self.output_directory / "ga_convergence_study/records.csv"
         if output_path.exists():
             db_old = pd.read_csv(output_path)
             db = pd.concat([db_old, db], axis=0).reset_index(drop=True)
@@ -580,31 +698,69 @@ class GeneticOptimizer(object):
     """
 
     def __init__(
-        self, configuration: GeneticOptimizerConfig, surrogate_models: dict, optimizer_checkpoint: OptimizerCheckpoint
+        self,
+        *,
+        objectives: list,
+        parameters: dict,
+        input_names: list,
+        optimization_parameters: dict,
+        termination_criterion,
+        normalization_coefficients: dict,
+        selection_method: str,
+        do_early_stopping: bool,
+        output_directory: pathlib.Path,
+        sampler,
+        samples_count: int,
+        surrogate_models: dict,
+        optimizer_checkpoint: OptimizerCheckpoint,
     ):
         """
-        Construct a new genetic optimizer based on the passed global
-        configuration
+        Construct a new genetic optimizer with explicit parameters
 
         Parameters
         ----------
-        configuration:
-            The global configuration of the experiment
-
-        surrogate_models:
+        objectives : list
+            List of objective function names
+        parameters : dict
+            Dictionary of parameter values for sampling
+        input_names : list
+            List of input parameter names
+        optimization_parameters : dict
+            Additional optimization parameters
+        termination_criterion : Any
+            Termination criterion for optimization
+        normalization_coefficients : dict
+            Dictionary mapping objective names to their normalization coefficients
+        selection_method : str
+            Selection method for optimization
+        do_early_stopping : bool
+            Whether to enable early stopping
+        output_directory : pathlib.Path
+            Directory where output files will be saved
+        sampler : Sampler
+            The sampler to use to generate the optimization points
+        samples_count : int
+            The number of optimization points to generate
+        surrogate_models : dict
             A dict of surrogates for each objective in the experiment, defined as
             {objective_name: surrogate_model}
+        optimizer_checkpoint : OptimizerCheckpoint
+            Checkpoint manager for optimization state
         """
-
-        self.config = configuration
-        self.exp_configuration = configuration.experiment_configuration
-
+        self.objectives = objectives
+        self.parameters = parameters
+        self.input_names = input_names
+        self.optimization_parameters = optimization_parameters
+        self.termination_criterion = termination_criterion
+        self.normalization_coefficients = normalization_coefficients
+        self.selection_method = selection_method
+        self.do_early_stopping = do_early_stopping
+        self.output_directory = output_directory
+        self.sampler = sampler
+        self.samples_count = samples_count
         self.surrogate_models = surrogate_models
-
-        self.sampler = configuration.sampler
-
-        self.output_path = self.exp_configuration.output_directory / "optim.csv"
         self.optimizer_checkpoint = optimizer_checkpoint
+        self.output_path = output_directory / "optim.csv"
 
     def _make_optimization_method(self):
         """
@@ -616,13 +772,30 @@ class GeneticOptimizer(object):
             A functor to an optimization method
         """
 
-        selection_method = self.config.selection_method
-        objectives = self.config.experiment_configuration.objectives
+        selection_method = self.selection_method
+        objectives = self.objectives
         # If we only have one objective, we can use the mono-objective optimization method
         if len(objectives) == 1 or selection_method == "mono":
-            return _MonoObjectiveOptimizationMethod(self.config, self.surrogate_models)
-        elif self.config.selection_method == "normalized":
-            return _NormalizedOptimizationMethod(self.config, self.surrogate_models)
+            return _MonoObjectiveOptimizationMethod(
+                objectives=self.objectives,
+                parameters=self.parameters,
+                input_names=self.input_names,
+                optimization_parameters=self.optimization_parameters,
+                termination_criterion=self.termination_criterion,
+                do_early_stopping=self.do_early_stopping,
+                output_directory=self.output_directory,
+                surrogate_models=self.surrogate_models,
+            )
+        elif self.selection_method == "normalized":
+            return _NormalizedOptimizationMethod(
+                objectives=self.objectives,
+                parameters=self.parameters,
+                input_names=self.input_names,
+                optimization_parameters=self.optimization_parameters,
+                termination_criterion=self.termination_criterion,
+                normalization_coefficients=self.normalization_coefficients,
+                surrogate_models=self.surrogate_models,
+            )
         else:
             raise ValueError(f"Unknown selection method ('{selection_method}')")
 
@@ -674,7 +847,9 @@ class GeneticOptimizer(object):
             best_config, _ = self._optimize_point(optimization_method, user_inputs)
             # results.append(best_config)
             best_config = pd.DataFrame([best_config])
-            best_config = encode_dataframe(self.exp_configuration.parameters_type, best_config)
+            # Get parameter types for encoding
+            parameters_type = _get_parameter_types(self.parameters)
+            best_config = encode_dataframe(parameters_type, best_config)
 
             # log best_config to the checkpoint. Should we change here to process a batch, of configs?
             best_config = self.optimizer_checkpoint.save(best_config)
@@ -685,7 +860,7 @@ class GeneticOptimizer(object):
     def _optimize(self):
 
         # First define the optimization points
-        samples = self.sampler.sample(self.config.samples_count)
+        samples = self.sampler.sample(self.samples_count)
 
         # Build the optimization method
         optimization_method = self._make_optimization_method()
@@ -693,7 +868,9 @@ class GeneticOptimizer(object):
         # Run the optimization method on every point
         results = self._optimize_all_samples(optimization_method, samples)
 
-        return encode_dataframe(self.exp_configuration.parameters_type, results)
+        # Get parameter types for encoding
+        parameters_type = _get_parameter_types(self.parameters)
+        return encode_dataframe(parameters_type, results)
 
     def run(self):
         """

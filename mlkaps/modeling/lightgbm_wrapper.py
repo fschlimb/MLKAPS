@@ -80,7 +80,7 @@ class OptunaTunerLightgbm(OptunaModelTuner, model_name="lightgbm"):
 
         :param trial: The current optuna trial
         :type trial: optuna.Trial
-        :return: A dictionnary containing the hyperparameters of the model
+        :return: A dictionary containing the hyperparameters of the model
         :rtype: dict
         """
 

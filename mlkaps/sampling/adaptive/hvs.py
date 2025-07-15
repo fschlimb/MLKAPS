@@ -125,7 +125,7 @@ class HVSPartition:
         Create a new HVS Partition
 
         :param bounds:
-            A dictionnary containing the bounds of the partitions for each feature,
+            A dictionary containing the bounds of the partitions for each feature,
             stored as feature: [low_bound, high_bound]
         :type bounds: dict
         :param samples:
@@ -219,7 +219,7 @@ class HVSPartitionner:
         """
         Construct a new HVSPartitionner
 
-        :param features: A dictionnary containing all the features to use to partition the samples
+        :param features: A dictionary containing all the features to use to partition the samples
         :type features: dict
         :param objective: The name of the features in the samples to consider as the objective
         :type objective: str
@@ -335,7 +335,7 @@ class HVSPartitionner:
         :param tree: The tree to parse
         :type tree: DecisionTreeRegressor
         :yield:
-            A leaf node id in the tree, and a dictionnary containing the bounds for each feature
+            A leaf node id in the tree, and a dictionary containing the bounds for each feature
         :rtype: tuple[int, dict]
         """
 

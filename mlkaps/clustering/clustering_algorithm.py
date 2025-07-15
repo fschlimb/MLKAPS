@@ -100,7 +100,7 @@ def generate_clustering_models(
     :type configuration: ExperimentConfig
     :param optimization_results: A dataframe containing the results of the optimization phase
     :type optimization_results: pd.DataFrame
-    :return: A dictionnary of decision tree per feature.
+    :return: A dictionary of decision tree per feature.
         The type of the model can change depending on the type of the feature
     :rtype: dict[str, DecisionTreeClassifier | DecisionTreeRegressor]
     """

@@ -9,7 +9,7 @@ import os
 
 from mlkaps.MLKaps import parse_arguments, ExperimentConfig, run_kernel_sampling, create_surrogate_models
 from mlkaps.optimization.optimizer_checkpoint import OptimizerCheckpoint
-from mlkaps.optimization.genetic_optimizer import GeneticOptimizer, GeneticOptimizerConfig
+from mlkaps.optimization.genetic_optimizer import create_genetic_optimizer_from_config
 import pytest
 
 
@@ -41,13 +41,14 @@ class Test2D:
         optimizer_checkpoint.delete_file()
 
         # run optimization
-        genetic_config = GeneticOptimizerConfig.from_configuration_dict(config_dict, experiment_config)
-        gen_optim = GeneticOptimizer(genetic_config, surrogate_models, optimizer_checkpoint)
-        optim_results1 = gen_optim.run()
+        genetic_optimizer = create_genetic_optimizer_from_config(
+            config_dict, experiment_config, surrogate_models, optimizer_checkpoint
+        )
+        optim_results1 = genetic_optimizer.run()
         optimizer_checkpoint.consistency_check(optim_results1)
 
         # run again without deleting the file
-        optim_results2 = gen_optim.run()
+        optim_results2 = genetic_optimizer.run()
         optimizer_checkpoint.consistency_check(optim_results2)
         optimizer_checkpoint.consistency_check(optim_results1)
 
@@ -61,7 +62,7 @@ class Test2D:
 
         # the samples are unchanged, so we should reproduce the same results
         # for the deleted rows
-        optim_results3 = gen_optim.run()
+        optim_results3 = genetic_optimizer.run()
         optimizer_checkpoint.consistency_check(optim_results3)
         optimizer_checkpoint.consistency_check(optim_results2)
         optimizer_checkpoint.consistency_check(optim_results1)

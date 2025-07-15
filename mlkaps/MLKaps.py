@@ -20,8 +20,7 @@ from mlkaps.codegen.codegen import write_decision_trees
 from mlkaps.configuration import ExperimentConfig
 from mlkaps.modeling.modeling import build_main_surrogates
 from mlkaps.optimization.genetic_optimizer import (
-    GeneticOptimizer,
-    GeneticOptimizerConfig,
+    create_genetic_optimizer_from_config,
 )
 from mlkaps.optimization.optimizer_checkpoint import OptimizerCheckpoint
 from mlkaps.sample_collection.kernel_sampling import sample_kernel
@@ -83,14 +82,15 @@ def run_optimization(args, config_dict, experiment_config, surrogate_models):
     qr = args.quick_restart
     has_quick_restart = qr in ["clustering"]
 
-    genetic_config = GeneticOptimizerConfig.from_configuration_dict(config_dict, experiment_config)
+    genetic_optimizer = create_genetic_optimizer_from_config(
+        config_dict, experiment_config, surrogate_models, optimizer_checkpoint
+    )
 
     optim_results = {}
     if has_quick_restart:
         optim_results = optimizer_checkpoint.restart()
     else:
-        gen_optim = GeneticOptimizer(genetic_config, surrogate_models, optimizer_checkpoint)
-        optim_results = gen_optim.run()
+        optim_results = genetic_optimizer.run()
 
     return optim_results
 
@@ -111,7 +111,21 @@ def create_surrogate_models(args, kernel_sampling_output, experiment_config):
     :rtype: dict(str, mlkaps.modeling.modeling.ModelWrapper)
     """
 
-    surrogate_models = build_main_surrogates(experiment_config, kernel_sampling_output)
+    # Extract modeling configuration components
+    modeling_config = experiment_config["modeling"]
+
+    surrogate_models = build_main_surrogates(
+        kernel_sampling_output,
+        parameters=experiment_config.parameters,
+        objectives=experiment_config.objectives,
+        modeling_method=modeling_config["modeling_method"],
+        output_directory=experiment_config.output_directory,
+        model_parameters=modeling_config.get("parameters", {}),
+        model_name=modeling_config.get("model_name"),
+        time_budget=modeling_config.get("time_budget"),
+        n_trials=modeling_config.get("n_trials"),
+        record=modeling_config.get("record", True),
+    )
 
     return surrogate_models
 
@@ -152,7 +166,7 @@ def parse_configuration_file(config_path, args):
     :param config_path: The path to the experiment configuration file (json file)
     :param args: The program arguments
 
-    :return: The raw dictionnary containing the configuration, and the parsed configuration
+    :return: The raw dictionary containing the configuration, and the parsed configuration
     :rtype: (dict, mlkaps.configuration.ExperimentConfig)
     """
 
@@ -169,7 +183,7 @@ def run_pipeline(args, config_dict, experiment_config):
     Run the MLKAPS pipeline based on the experiment configuration
 
     :param args: The program arguments
-    :param config_dict: The raw dictionnary containing the experiments
+    :param config_dict: The raw dictionary containing the experiments
     :param experiment_config: The ExperimentConfig object containing the
         parsed experiment configuration
     :type experiment_config: mlkaps.configuration.ExperimentConfig
@@ -275,7 +289,7 @@ def run_from_config(argv, config_dict, working_dir, output_directory=None):
 
     :param argv: A list of arguments to pass to the program, as if called from the command line
     :type argv: list
-    :param config_dict: A dictionnary containing the raw experiment configuration
+    :param config_dict: A dictionary containing the raw experiment configuration
     :type config_dict: dict
     :param working_dir: The working directory to use for the experiment
     """

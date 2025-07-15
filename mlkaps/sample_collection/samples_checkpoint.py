@@ -38,7 +38,7 @@ class SamplesCheckpoint:
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
 
         self.parameters = parameters
-        self.column_names = [parameters.keys()] + [x.name for x in objectives]  # sorted needed?
+        self.column_names = list(parameters.keys()) + [x.name for x in objectives]  # sorted needed?
         self.restarted = False
 
     def delete_file(self):
@@ -94,12 +94,12 @@ class SamplesCheckpoint:
             ), f"Sample names {sample_names} do not match expected column names {self.column_names}"
 
             # expected types  (note we only have types for parameters, not for the objective)
-            for param in self.parameters:
-                sample_type = samples.dtypes[param.name]
-                expected_type = param.get_dtype()
+            for pname, pval in self.parameters.items():
+                sample_type = samples.dtypes[pname]
+                expected_type = pval.get_dtype()
                 assert self._compatible_types(
                     sample_type, expected_type
-                ), f"Sample type {sample_type} of parameter {param} is not compatible with {expected_type}"
+                ), f"Sample type {sample_type} of parameter {pname} is not compatible with {expected_type}"
 
             # check all the elements of each column have the same type
             for column in samples.columns:

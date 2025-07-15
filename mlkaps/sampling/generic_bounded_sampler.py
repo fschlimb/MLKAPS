@@ -73,7 +73,7 @@ class GenericBoundedSampler(StaticSampler):
         """
         Generate the bounds of the sampling process
 
-        :return: A dictionnary containing the bounds for each variables
+        :return: A dictionary containing the bounds for each variables
         :rtype: dict(str, list)
         """
 
